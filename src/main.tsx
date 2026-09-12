@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import { RuntimeErrorBoundary } from './components/RuntimeErrorBoundary';
 import { DEFAULT_PROFILE } from './services/storage';
+import './services/api';
 import './services/storageRoutines';
 import './index.css';
 
