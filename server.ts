@@ -49,12 +49,16 @@ if (process.env.GEMINI_API_KEY) {
   catch (e) { console.warn('Gemini initialization failed:', e); }
 }
 
-async function askAI(prompt: string): Promise<any> {
+async function askAI(prompt: string, thinkingLevel: 'minimal' | 'low' = 'minimal'): Promise<any> {
   if (!ai) throw new Error('GEMINI_API_KEY is not configured');
   const response = await ai.models.generateContent({
     model: 'gemini-3.6-flash',
     contents: prompt,
-    config: { responseMimeType: 'application/json', temperature: 0.35 }
+    config: {
+      responseMimeType: 'application/json',
+      temperature: 0.35,
+      thinkingConfig: { thinkingLevel: thinkingLevel as any }
+    }
   });
   const text = response.text || '{}';
   try { return JSON.parse(text); }
@@ -177,7 +181,9 @@ app.post('/api/generate-workout', async (req, res) => {
   const body = req.body || {};
   try {
     const prompt = `You are Lifted, a careful high-quality strength and conditioning coach. Create one personalized workout as JSON. Use the athlete's completed sets, weights, difficulty feedback, injuries, readiness, school lifting, practice history, and future scheduled events. Do not invent past performance. Progress weights conservatively from demonstrated performance; if no reliable weight history exists, use a range or recommend a starting load based on technique and RIR rather than pretending it is exact. If practice is today, preserve practice freshness. If no practice is today, do not falsely claim there is practice. For any reported pain/injury, avoid movements the athlete says aggravate it and provide a pain-free alternative; do not diagnose injuries. Include every activity needed for the selected duration, realistic rest, warm-up/prep, strength/hypertrophy work, core or durability work, and a brief cooldown when useful. The athlete is a youth athlete, so prioritize sound technique, recovery, and coach/clinician input over maximal loading. Return ONLY valid JSON with this shape: {workoutTitle,goal,estimatedMinutes,readinessStatus,reasoning,injuryProtectionNotes,equipmentNeeded,exercises:[{name,sets,reps,recommendedWeight,weightUnit,restSeconds,tempo,targetMuscles,notes,whyWeightHypertrophyInjury,alternative,aiSummary:{whatItIs,howToDoIt,whatItExercises:{primary,secondary,movementPattern},whyThisWeight:{weightRationale,hypertrophyMechanism,injuryPreventionFocus,progressionContext}}}]}. Context: ${athleteContext(body)}`;
-    const plan = await askAI(prompt);
+    // Workout calibration needs more reasoning than simple coach/routine responses,
+    // but low thinking keeps the response fast enough for an interactive recalibration.
+    const plan = await askAI(prompt, 'low');
     const result = {
       id: `ai-plan-${Date.now()}`, date: body.targetDate || today(), status: 'planned',
       practiceLaterToday: Boolean(body.readiness?.practiceLaterToday || body.schoolLog?.hadPractice),
