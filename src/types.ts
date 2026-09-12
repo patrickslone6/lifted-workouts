@@ -24,16 +24,16 @@ export type DifficultyRating =
 
 export interface SpecificInjury {
   id: string;
-  name: string; // e.g. "Patellar Tendonitis (Left Knee)"
-  description: string; // e.g. "Sharp pain when landing from jumps or deep squats"
-  aggravatingMovements?: string; // e.g. "Deep knee flexion, jumping"
+  name: string;
+  description: string;
+  aggravatingMovements?: string;
   severity: 'mild' | 'moderate' | 'severe';
   todayStatus?: 'pain_free' | 'mild_stiffness' | 'moderate_ache' | 'severe_flare';
 }
 
 export interface UserAccount {
   id: string;
-  identifier: string; // Email or Phone number
+  identifier: string;
   identifierType: 'email' | 'phone';
   name: string;
   createdAt: string;
@@ -51,7 +51,7 @@ export interface PhysicalLimitation {
 
 export interface ScheduledEvent {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   type: 'practice' | 'game' | 'scrimmage' | 'tournament' | 'other_hard_activity';
   sport: string;
   timeOfDay: 'morning' | 'afternoon' | 'evening' | 'later_today' | 'earlier_today';
@@ -92,15 +92,15 @@ export interface ExerciseDefinition {
   pattern: MovementPattern;
   primaryMuscles: string[];
   secondaryMuscles: string[];
-  equipmentRequired: string[]; // 'barbell', 'dumbbell', 'cable', 'machine', 'bodyweight', etc.
+  equipmentRequired: string[];
   difficulty: ExperienceLevel;
   instructions: string[];
   techniqueCues: string[];
   breathingCue: string;
-  contraindications: string[]; // 'knee_pain', 'shoulder_overhead', etc.
+  contraindications: string[];
   alternativeExerciseId?: string;
-  hypertrophyFocus: string; // Stretch under load, mechanical tension cue
-  injuryPreventionNote: string; // Joint stability, alignment, safety cue
+  hypertrophyFocus: string;
+  injuryPreventionNote: string;
   defaultWeightLb: number;
   defaultReps: number;
   defaultSets: number;
@@ -157,7 +157,7 @@ export interface PlannedExercise {
 }
 
 export interface DailyReadiness {
-  date: string; // YYYY-MM-DD
+  date: string;
   energyLevel: 'great' | 'good' | 'okay' | 'tired' | 'very_tired';
   sorenessLevel: 'none' | 'mild' | 'moderate' | 'high';
   soreAreas?: string[];
@@ -165,16 +165,16 @@ export interface DailyReadiness {
   practiceLaterToday: boolean;
   practiceIntensity?: 'light' | 'moderate' | 'hard' | 'extreme';
   practiceDurationMinutes?: number;
-  upcomingGameDaysAway?: number; // e.g. 0 if today, 1 if tomorrow, 2, 3...
+  upcomingGameDaysAway?: number;
   availableMinutes: number;
-  readinessScore: number; // 1 - 10
+  readinessScore: number;
   injuryStatus?: Record<string, 'pain_free' | 'mild_stiffness' | 'moderate_ache' | 'severe_flare'>;
   newPainDescription?: string;
 }
 
 export interface WorkoutPlan {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   workoutTitle: string;
   goal: string;
   status: 'planned' | 'in_progress' | 'completed' | 'skipped';
@@ -256,7 +256,7 @@ export interface PersonalRecord {
   repsAtHeaviest: number;
   weightUnit: WeightUnit;
   dateAchieved: string;
-  bestVolume: number; // weight * reps * sets
+  bestVolume: number;
 }
 
 export interface ChatMessage {
@@ -269,11 +269,11 @@ export interface ChatMessage {
 export interface PlyometricsExercise {
   name: string;
   sets: number;
-  repsOrDuration: string; // e.g. "8 jumps", "10 hops per leg", "25s"
+  repsOrDuration: string;
   restSeconds: number;
   instructions: string;
   coachingCue: string;
-  targetFocus: string; // e.g. "Ankle Stiffness & Reactivity", "Vertical Power", "Deceleration"
+  targetFocus: string;
   intensity: 'low' | 'moderate' | 'high';
   equipmentNeeded: 'none' | 'small_space' | 'low_step_or_floor';
 }
@@ -293,18 +293,19 @@ export interface PlyometricsRoutine {
 
 export interface SchoolWorkoutLog {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   timestamp: string;
+  weightliftingDate?: string;
+  practiceDate?: string;
   hadWeightliftingClass: boolean;
-  classType?: string; // e.g. "Basketball Weightlifting Class"
-  mainLiftExercise?: string; // e.g. "Back Squat", "Bench Press", "Trap Bar Deadlift", "Power Clean"
+  classType?: string;
+  mainLiftExercise?: string;
   weightClassIntensity?: 'easy' | 'moderate' | 'heavy' | 'exhausting';
-  bodyPartsSoreOrWorked: string[]; // e.g. ["Quads", "Lower Back", "Knees", "Hamstrings"]
+  bodyPartsSoreOrWorked: string[];
   hadPractice: boolean;
-  practiceSport?: string; // e.g. "Basketball"
+  practiceSport?: string;
   practiceIntensity?: 'light_shootaround' | 'moderate' | 'hard_scrimmage' | 'exhausting_sprints';
   practiceDurationMinutes?: number;
-  howHardItLeftMe: string; // e.g. "Legs feel heavy, upper body fresh"
+  howHardItLeftMe: string;
   notes?: string;
 }
-
