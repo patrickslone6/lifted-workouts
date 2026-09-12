@@ -52,7 +52,7 @@ if (process.env.GEMINI_API_KEY) {
 async function askAI(prompt: string): Promise<any> {
   if (!ai) throw new Error('GEMINI_API_KEY is not configured');
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.6-flash',
     contents: prompt,
     config: { responseMimeType: 'application/json', temperature: 0.35 }
   });
@@ -117,7 +117,7 @@ function safeFallbackWorkout(body: any) {
 }
 
 app.get('/api/health', (_req, res) => res.json({
-  status: 'ok', hasGeminiKey: Boolean(process.env.GEMINI_API_KEY), ai: Boolean(ai), model: 'gemini-2.5-flash'
+  status: 'ok', hasGeminiKey: Boolean(process.env.GEMINI_API_KEY), ai: Boolean(ai), model: 'gemini-3.6-flash'
 }));
 
 app.post('/api/auth/register', (req, res) => {
