@@ -1,0 +1,6 @@
+{
+  "name": "Lifted",
+  "description": "Smart, minimalist workout tracker and builder with AI coaching, progressive overload tracking, past weight history, and sport-ready mobility.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

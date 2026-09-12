@@ -1,0 +1,28 @@
+{
+  "athlete@example.com": {
+    "id": "acc-1788926378616",
+    "identifier": "athlete@example.com",
+    "identifierType": "email",
+    "name": "athlete",
+    "password": "",
+    "createdAt": "2026-09-09T03:59:38.616Z",
+    "lastSyncedAt": "2026-09-09T03:59:38.616Z",
+    "userData": null
+  },
+  "testathlete@example.com": {
+    "id": "acc-1788926586722",
+    "identifier": "testathlete@example.com",
+    "identifierType": "email",
+    "name": "Jordan Smith",
+    "password": "",
+    "createdAt": "2026-09-09T04:03:06.722Z",
+    "lastSyncedAt": "2026-09-09T04:03:08.517Z",
+    "userData": {
+      "profile": {
+        "name": "Jordan Smith",
+        "sport": "Soccer"
+      },
+      "history": []
+    }
+  }
+}
