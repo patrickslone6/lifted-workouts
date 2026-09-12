@@ -1,0 +1,49 @@
+name: Optimize AI speed
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  optimize:
+    if: ${{ !contains(github.event.head_commit.message, '[ai-speed]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tune Gemini reasoning levels
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('server.ts')
+          s = p.read_text()
+          old = """async function askAI(prompt: string): Promise<any> {\n  if (!ai) throw new Error('GEMINI_API_KEY is not configured');\n  const response = await ai.models.generateContent({\n    model: 'gemini-3.6-flash',\n    contents: prompt,\n    config: { responseMimeType: 'application/json', temperature: 0.35 }\n  });"""
+          new = """async function askAI(prompt: string, thinkingLevel: 'minimal' | 'low' = 'minimal'): Promise<any> {\n  if (!ai) throw new Error('GEMINI_API_KEY is not configured');\n  const response = await ai.models.generateContent({\n    model: 'gemini-3.6-flash',\n    contents: prompt,\n    config: {\n      responseMimeType: 'application/json',\n      temperature: 0.35,\n      thinkingConfig: { thinkingLevel: thinkingLevel as any }\n    }\n  });"""
+          if old not in s:
+              raise SystemExit('askAI block not found; refusing to modify server.ts')
+          s = s.replace(old, new, 1)
+          old2 = """    const plan = await askAI(prompt);"""
+          new2 = """    // Workout calibration needs more reasoning than simple coach/routine responses,\n    // but low thinking keeps the response fast enough for an interactive recalibration.\n    const plan = await askAI(prompt, 'low');"""
+          if old2 not in s:
+              raise SystemExit('workout askAI call not found; refusing to modify server.ts')
+          s = s.replace(old2, new2, 1)
+          p.write_text(s)
+          PY
+
+      - name: Commit optimized server
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server.ts
+          git commit -m "Optimize workout AI latency [ai-speed]"
+          git push
+
+      - name: Remove temporary workflow
+        if: success()
+        run: |
+          git rm .github/workflows/optimize-ai-speed.yml
+          git commit -m "Remove temporary AI optimization workflow [ai-speed]"
+          git push
