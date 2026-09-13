@@ -1,0 +1,51 @@
+:root {
+  --lifted-bg: #0b1020;
+  --lifted-surface: #121a2d;
+  --lifted-surface-2: #18233a;
+  --lifted-border: rgba(148, 163, 184, 0.16);
+  --lifted-text: #f4f7fb;
+  --lifted-muted: #9aa8bd;
+  --lifted-accent: #7dd3c7;
+  --lifted-accent-strong: #4fd1c5;
+  --lifted-blue: #8ab4ff;
+}
+
+html, body, #root { min-height: 100%; }
+body {
+  background: radial-gradient(circle at top, #15213b 0%, var(--lifted-bg) 42%, #070b16 100%) !important;
+  color: var(--lifted-text);
+}
+
+.bg-zinc-950 { background-color: var(--lifted-bg) !important; }
+.bg-zinc-900 { background-color: var(--lifted-surface) !important; }
+.bg-zinc-800 { background-color: var(--lifted-surface-2) !important; }
+.border-zinc-800, .border-zinc-700 { border-color: var(--lifted-border) !important; }
+.text-zinc-100, .text-white { color: var(--lifted-text) !important; }
+.text-zinc-400, .text-zinc-500 { color: var(--lifted-muted) !important; }
+.text-emerald-400, .text-emerald-300, .text-emerald-200 { color: var(--lifted-accent) !important; }
+.bg-emerald-600 { background-color: #347f78 !important; }
+.bg-emerald-500 { background-color: var(--lifted-accent-strong) !important; }
+.border-emerald-500 { border-color: rgba(125, 211, 199, 0.7) !important; }
+
+button, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+button { transition: transform .16s ease, background-color .16s ease, border-color .16s ease, opacity .16s ease; }
+button:active:not(:disabled) { transform: scale(.985); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--lifted-blue); outline-offset: 2px; }
+
+.data-delete {
+  display: flex; align-items: center; justify-content: flex-start; gap: .55rem;
+  width: 100%; padding: .7rem .8rem; border-radius: .8rem;
+  border: 1px solid rgba(148, 163, 184, .14); background: rgba(24, 35, 58, .72);
+  color: #b8c4d6; font-size: .75rem; font-weight: 700; text-align: left;
+}
+.data-delete:hover { border-color: rgba(125, 211, 199, .45); background: rgba(38, 58, 84, .9); color: #f4f7fb; }
+
+.coach-shell { background: rgba(15, 23, 42, .76) !important; border-color: var(--lifted-border) !important; }
+.coach-bubble { background: var(--lifted-surface) !important; border-color: var(--lifted-border) !important; }
+.user-bubble { background: #245e61 !important; border-color: rgba(125, 211, 199, .25) !important; }
+.coach-composer { background: rgba(11, 16, 32, .94) !important; border-color: var(--lifted-border) !important; }
+
+@media (max-width: 640px) {
+  .coach-shell { border-radius: 18px; }
+  .data-delete { min-height: 46px; }
+}
