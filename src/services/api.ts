@@ -1,8 +1,4 @@
 const configuredBase = String(import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/$/, '');
-
-// GitHub Pages and the Render API are separate origins in production. The
-// Pages workflow already uses this Render service, so keep the same default
-// here for Safari/iPhone builds and direct local previews.
 const productionBase = 'https://lifted-workouts.onrender.com';
 export const API_BASE_URL = configuredBase || productionBase;
 
@@ -23,18 +19,4 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   } finally {
     window.clearTimeout(timeout);
   }
-}
-
-if (typeof window !== 'undefined') {
-  const nativeFetch = window.fetch.bind(window);
-  window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-    let nextInput = input;
-    if (typeof input === 'string' && input.startsWith('/api/')) nextInput = apiUrl(input);
-    else if (input instanceof URL && input.pathname.startsWith('/api/')) nextInput = new URL(apiUrl(`${input.pathname}${input.search}`));
-    else if (typeof Request !== 'undefined' && input instanceof Request && new URL(input.url).pathname.startsWith('/api/')) {
-      const requestUrl = new URL(input.url);
-      nextInput = new Request(apiUrl(`${requestUrl.pathname}${requestUrl.search}`), input);
-    }
-    return nativeFetch(nextInput, init);
-  }) as typeof window.fetch;
 }
