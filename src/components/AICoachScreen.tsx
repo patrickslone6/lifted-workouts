@@ -1,214 +1,99 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage, ScheduledEvent, UserProfile, WorkoutPlan } from '../types';
-import {
-  Sparkles,
-  Send,
-  Bot,
-  User,
-  HelpCircle,
-  Clock,
-  ShieldCheck,
-  Zap,
-  Activity
-} from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Bot, Send, Sparkles, User, Wifi, WifiOff } from 'lucide-react';
+import { ChatMessage, DailyReadiness, ScheduledEvent, SchoolWorkoutLog, UserProfile, WorkoutPlan } from '../types';
 
 interface Props {
   user: UserProfile;
+  readiness?: DailyReadiness;
   currentPlan: WorkoutPlan;
+  workoutHistory?: WorkoutPlan[];
   scheduledEvents: ScheduledEvent[];
+  schoolLogs?: SchoolWorkoutLog[];
   chatMessages: ChatMessage[];
   onSaveMessages: (messages: ChatMessage[]) => void;
-  onQuickAdaptPlan?: (adaptation: string) => void;
 }
 
-export const AICoachScreen: React.FC<Props> = ({
-  user,
-  currentPlan,
-  scheduledEvents,
-  chatMessages,
-  onSaveMessages,
-  onQuickAdaptPlan
-}) => {
+export const AICoachScreen: React.FC<Props> = ({ user, readiness, currentPlan, workoutHistory = [], scheduledEvents, schoolLogs = [], chatMessages, onSaveMessages }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(chatMessages);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [online, setOnline] = useState(true);
+  const endRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, loading]);
+  useEffect(() => setMessages(chatMessages), [chatMessages]);
+  useEffect(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), [messages, loading]);
 
-  const handleSend = async (textToSend?: string) => {
-    const query = textToSend || input;
-    if (!query.trim() || loading) return;
-
-    const userMsg: ChatMessage = {
-      id: `msg-${Date.now()}`,
-      sender: 'user',
-      text: query,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
-    onSaveMessages(newMessages);
-    setInput('');
-    setLoading(true);
-
+  const send = async (preset?: string) => {
+    const text = (preset ?? input).trim();
+    if (!text || loading) return;
+    const userMsg: ChatMessage = { id: `msg-${Date.now()}`, sender: 'user', text, timestamp: new Date().toISOString() };
+    const next = [...messages, userMsg];
+    setMessages(next); onSaveMessages(next); setInput(''); setLoading(true); setOnline(true);
     try {
       const res = await fetch('/api/coach-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: query,
-          history: newMessages.slice(-6),
-          userContext: user,
-          currentPlan,
-          scheduledEvents
+          message: text,
+          history: next,
+          user,
+          readiness,
+          recentHistory: workoutHistory,
+          scheduledEvents,
+          recentSchoolLogs: schoolLogs,
+          todayWorkout: currentPlan,
+          targetDate: new Date().toISOString().slice(0, 10)
         })
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        const botMsg: ChatMessage = {
-          id: `bot-${Date.now()}`,
-          sender: 'assistant',
-          text: data.reply,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-        const updated = [...newMessages, botMsg];
-        setMessages(updated);
-        onSaveMessages(updated);
-      } else {
-        throw new Error('Network error');
-      }
-    } catch (e) {
-      const botMsg: ChatMessage = {
-        id: `bot-${Date.now()}`,
-        sender: 'assistant',
-        text: `Coach advice: Focus on form and keeping 1-2 reps in reserve. Since you have practice later today, we have already modulated the leg volume to prevent delayed onset muscle soreness. Feel free to adjust the time or load at any point!`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-      const updated = [...newMessages, botMsg];
-      setMessages(updated);
-      onSaveMessages(updated);
-    } finally {
-      setLoading(false);
-    }
+      if (!res.ok) throw new Error(`Coach API ${res.status}`);
+      const data = await res.json();
+      const reply = String(data?.reply || 'I could not produce a coaching response. Please try again.');
+      const bot: ChatMessage = { id: `bot-${Date.now()}`, sender: 'assistant', text: reply, timestamp: new Date().toISOString() };
+      const updated = [...next, bot];
+      setMessages(updated); onSaveMessages(updated);
+    } catch (error) {
+      console.warn('Coach AI request failed', error);
+      setOnline(false);
+      const bot: ChatMessage = { id: `bot-${Date.now()}`, sender: 'assistant', text: 'I could not reach the Coach AI right now. Your message is saved and will remain in your coach history. Check your connection and try again.', timestamp: new Date().toISOString() };
+      const updated = [...next, bot]; setMessages(updated); onSaveMessages(updated);
+    } finally { setLoading(false); }
   };
 
+  const suggestions = [
+    'How should I adjust today for how I feel?',
+    'What should I improve from my recent workouts?',
+    'How can this workout help my sport?',
+    'What does my recent weight and rep trend show?'
+  ];
+
   return (
-    <div className="flex flex-col h-[calc(100vh-12rem)] max-w-3xl mx-auto bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden text-left">
-      {/* Header */}
-      <div className="p-4 sm:p-5 border-b border-zinc-800 bg-zinc-950/60 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            <Bot className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-white">AI Athletic Coach</h2>
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                Active Memory
-              </span>
-            </div>
-            <p className="text-xs text-zinc-400">
-              Aware of your {user.sport} training, practice schedule, and upcoming matches
-            </p>
-          </div>
+    <section className="coach-shell" aria-label="Lifted AI Coach">
+      <div className="coach-header">
+        <div className="coach-brand">
+          <div className="coach-icon"><Sparkles size={19} /></div>
+          <div><h1>Lifted Coach</h1><p>Uses your training history, check-ins, feedback and schedule.</p></div>
         </div>
+        <div className={`coach-status ${online ? 'is-online' : 'is-offline'}`}><span className="status-dot" />{online ? <Wifi size={13} /> : <WifiOff size={13} />}{online ? 'AI ready' : 'Offline'}</div>
       </div>
 
-      {/* Suggested Quick Prompt Chips */}
-      <div className="p-3 bg-zinc-950/40 border-b border-zinc-800/80 flex items-center gap-2 overflow-x-auto text-xs whitespace-nowrap scrollbar-none">
-        {[
-          'Why this weight for squats?',
-          'How does practice later change my workout?',
-          'Taper for my game this weekend',
-          'Make today a 20-minute session',
-          'How do I maximize hypertrophy safely?'
-        ].map((chip, idx) => (
-          <button
-            key={idx}
-            onClick={() => handleSend(chip)}
-            className="px-3 py-1.5 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 text-xs transition shrink-0"
-          >
-            {chip}
-          </button>
-        ))}
+      <div className="coach-chips">
+        {suggestions.map((s) => <button key={s} type="button" onClick={() => send(s)}>{s}</button>)}
       </div>
 
-      {/* Chat Messages */}
-      <div className="flex-1 p-4 sm:p-5 overflow-y-auto space-y-4">
+      <div className="coach-messages">
+        {messages.length === 0 && <div className="coach-empty"><Bot size={30} /><h2>Your training copilot</h2><p>Ask about your workout, progression, recovery, soreness, or how your training connects to your sport.</p></div>}
         {messages.map((m) => {
-          const isMe = m.sender === 'user';
-          return (
-            <div
-              key={m.id}
-              className={`flex items-start gap-2.5 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
-            >
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
-                  isMe
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-zinc-800 text-emerald-400 border border-zinc-700'
-                }`}
-              >
-                {isMe ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-              </div>
-
-              <div
-                className={`max-w-[80%] rounded-2xl p-4 text-sm leading-relaxed ${
-                  isMe
-                    ? 'bg-emerald-600 text-white shadow-md'
-                    : 'bg-zinc-950/80 border border-zinc-800 text-zinc-200'
-                }`}
-              >
-                <div className="whitespace-pre-wrap">{m.text}</div>
-                <span
-                  className={`text-[10px] block mt-1.5 ${
-                    isMe ? 'text-emerald-200 text-right' : 'text-zinc-400'
-                  }`}
-                >
-                  {m.timestamp}
-                </span>
-              </div>
-            </div>
-          );
+          const mine = m.sender === 'user';
+          return <div key={m.id} className={`coach-row ${mine ? 'mine' : ''}`}><div className={`coach-avatar ${mine ? 'user-avatar' : ''}`}>{mine ? <User size={15} /> : <Bot size={15} />}</div><div className={`coach-bubble ${mine ? 'user-bubble' : ''}`}><div>{m.text}</div><time>{new Date(m.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time></div></div>;
         })}
-
-        {loading && (
-          <div className="flex items-center gap-2 text-zinc-400 text-xs p-2">
-            <Bot className="w-4 h-4 animate-spin text-emerald-400" />
-            <span>AI Coach is analyzing your schedule and biomechanics...</span>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
+        {loading && <div className="coach-row"><div className="coach-avatar"><Bot size={15} /></div><div className="coach-bubble typing"><span /><span /><span /></div></div>}
+        <div ref={endRef} />
       </div>
 
-      {/* Input Field */}
-      <div className="p-3 sm:p-4 border-t border-zinc-800 bg-zinc-950/80 flex items-center gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              handleSend();
-            }
-          }}
-          placeholder="Ask about weights, form, hypertrophy, upcoming games..."
-          className="flex-1 p-3 rounded-xl bg-zinc-900 border border-zinc-800 text-sm text-white focus:outline-none focus:border-emerald-500"
-        />
-        <button
-          onClick={() => handleSend()}
-          disabled={!input.trim() || loading}
-          className="p-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white transition shadow-lg shadow-emerald-950"
-        >
-          <Send className="w-4 h-4" />
-        </button>
-      </div>
-    </div>
+      <form className="coach-composer" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask Lifted anything about your training…" autoComplete="off" enterKeyHint="send" />
+        <button type="submit" disabled={!input.trim() || loading} aria-label="Send"><Send size={18} /></button>
+      </form>
+    </section>
   );
 };
