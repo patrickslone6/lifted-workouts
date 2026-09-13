@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { UserProfile, DailyReadiness, WorkoutPlan, MorningMobilityRoutine, NightlyStretchingRoutine, ScheduledEvent, ChatMessage, UserAccount, PlyometricsRoutine, SchoolWorkoutLog } from './types';
-import { storageService, DEFAULT_PROFILE, DEFAULT_READINESS } from './services/storage';
+import { storageService } from './services/storage';
 import { fitnessEngine } from './services/fitnessEngine';
+import { apiFetch } from './services/api';
 import { Header, NavTab } from './components/Header';
 import { TodayScreen } from './components/TodayScreen';
 import { CalendarScreen } from './components/CalendarScreen';
@@ -20,9 +21,14 @@ import { AuthModal } from './components/AuthModal';
 import { CustomWorkoutModal } from './components/CustomWorkoutModal';
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
+const generationGateKey = (date = todayKey()) => `lifted_workout_generation_gate_${date}`;
 
 function getSavedTodayPlan(): WorkoutPlan | null {
   try {
+    // A plan is not eligible to be previewed just because it exists in local storage.
+    // It must have been generated after today's check-in, or restored from a completed
+    // cloud session that was already generated today.
+    if (localStorage.getItem(generationGateKey()) !== '1') return null;
     const raw = localStorage.getItem('ai_coach_today_workout_v1');
     const saved = raw ? JSON.parse(raw) : null;
     const plan = saved?.plan || saved;
@@ -31,24 +37,16 @@ function getSavedTodayPlan(): WorkoutPlan | null {
 }
 
 const readyPlan = (date = todayKey()): WorkoutPlan => ({
-  id: `ready-${date}`,
-  date,
-  workoutTitle: 'Ready when you are',
-  goal: 'Sport performance, strength & durability',
-  estimatedMinutes: 35,
+  id: `ready-${date}`, date, workoutTitle: 'Ready when you are', goal: 'Sport performance, strength & durability', estimatedMinutes: 35,
   readinessStatus: 'Check in to build today',
-  reasoning: 'Your workout is intentionally not generated when the app opens. Tap Start Lift for Today, complete the check-in, and Lifted will generate one plan for this session.',
+  reasoning: 'Your daily lift stays hidden until you explicitly generate it after the pre-workout check-in.',
   injuryProtectionNotes: 'Tell the check-in about soreness, pain, and what you did yesterday so the coach can adjust the session.',
-  status: 'planned',
-  isAiGenerated: true,
-  needsGeneration: true,
-  equipmentNeeded: [],
-  exercises: []
+  status: 'planned', isAiGenerated: true, needsGeneration: true, equipmentNeeded: [], exercises: []
 } as WorkoutPlan);
 
-const emptyMobility = (): MorningMobilityRoutine => ({ id: `mobility-ready-${todayKey()}`, date: todayKey(), completed: false, isAiGenerated: true, title: 'Morning mobility', durationMinutes: 10, rationale: 'Complete the morning check-in before starting so Lifted can account for soreness and yesterday\'s workload.', exercises: [] } as MorningMobilityRoutine);
+const emptyMobility = (): MorningMobilityRoutine => ({ id: `mobility-ready-${todayKey()}`, date: todayKey(), completed: false, isAiGenerated: true, title: 'Morning mobility', durationMinutes: 10, rationale: 'Complete the check-in before starting so Lifted can account for soreness and yesterday\'s workload.', exercises: [] } as MorningMobilityRoutine);
 const emptyNightly = (): NightlyStretchingRoutine => ({ id: `nightly-ready-${todayKey()}`, date: todayKey(), completed: false, isAiGenerated: true, title: 'Evening recovery', durationMinutes: 10, rationale: 'Lifted will personalize recovery from your actual training and feedback.', exercises: [] } as NightlyStretchingRoutine);
-const emptyPlyos = (): PlyometricsRoutine => ({ id: `plyo-ready-${todayKey()}`, date: todayKey(), completed: false, isAiGenerated: true, title: 'Athletic power', durationMinutes: 10, rationale: 'Power work is only generated when you ask for it and will account for your recent load.', exercises: [] } as PlyometricsRoutine);
+const emptyPlyos = (): PlyometricsRoutine => ({ id: `plyo-ready-${todayKey()}`, date: todayKey(), completed: false, isAiGenerated: true, title: 'Athletic power', durationMinutes: 10, rationale: 'Power work is generated only when requested and will account for recent load.', exercises: [] } as PlyometricsRoutine);
 
 export function App() {
   const [user, setUser] = useState<UserProfile>(() => storageService.getUserProfile());
@@ -83,15 +81,23 @@ export function App() {
 
   const buildPerformanceMap = useCallback((history: WorkoutPlan[]) => {
     const map: Record<string, any> = {};
-    [...history].sort((a, b) => a.date.localeCompare(b.date)).forEach((workout) => {
-      if (workout.status !== 'completed' && !workout.completedAt) return;
+    [...history].filter((w) => w.status === 'completed' || w.completedAt).sort((a, b) => a.date.localeCompare(b.date)).forEach((workout) => {
       (workout.exercises || []).forEach((ex) => {
         const sets = (ex.completedSets || []).filter((s) => s.completed && Number(s.weight) >= 0 && Number(s.reps) > 0);
         if (!sets.length && !ex.completed) return;
-        const best: any = sets.length ? sets.reduce((a, b) => Number(b.weight) > Number(a.weight) ? b : a) : { weight: ex.actualWeightUsed ?? ex.recommendedWeight ?? 0, reps: ex.reps };
-        const record = { weight: Number(best.weight) || 0, reps: Number(best.reps) || ex.reps, difficulty: ex.feedbackDifficulty || 'just_right', painReported: ex.painReported, date: workout.date };
-        map[ex.exerciseId] = record;
-        map[ex.name.toLowerCase().trim()] = record;
+        const record = {
+          weight: Number(sets.length ? sets[sets.length - 1].weight : ex.actualWeightUsed ?? ex.recommendedWeight ?? 0) || 0,
+          reps: Number(sets.length ? sets[sets.length - 1].reps : ex.reps) || 0,
+          difficulty: ex.feedbackDifficulty || 'just_right',
+          painReported: Boolean(ex.painReported),
+          note: ex.feedbackNote || ex.notes || '',
+          date: workout.date,
+        };
+        const keys = [ex.exerciseId, ex.name.toLowerCase().trim()].filter(Boolean);
+        keys.forEach((key) => {
+          const existing = map[key]?.history || [];
+          map[key] = { ...record, history: [...existing, record].slice(-12) };
+        });
       });
     });
     return map;
@@ -100,48 +106,38 @@ export function App() {
   const syncToCloud = useCallback((acc: UserAccount | null = currentAccount, customState: any = {}) => {
     if (!acc) return;
     void storageService.syncAllToCloud(acc, {
-      profile: customState.profile || user,
-      readiness: customState.readiness || readiness,
-      events: customState.events || scheduledEvents,
-      history: customState.history || workoutHistory,
-      todayPlan: customState.todayPlan || todayWorkout,
+      profile: customState.profile || user, readiness: customState.readiness || readiness, events: customState.events || scheduledEvents,
+      history: customState.history || workoutHistory, todayPlan: customState.todayPlan || todayWorkout,
       additionalWorkout: customState.additionalWorkout !== undefined ? customState.additionalWorkout : additionalWorkout,
-      schoolLogs: storageService.getSchoolWorkoutLogs(),
-      chatMessages: customState.chatMessages || chatMessages
+      schoolLogs: storageService.getSchoolWorkoutLogs(), chatMessages: customState.chatMessages || chatMessages
     });
   }, [currentAccount, user, readiness, scheduledEvents, workoutHistory, todayWorkout, additionalWorkout, chatMessages]);
 
-  const refreshStats = () => {
-    setDailyStreak(storageService.calculateDailyStreak());
-    setVolumeTracking(storageService.calculateAccumulatedVolume());
-  };
+  const refreshStats = () => { setDailyStreak(storageService.calculateDailyStreak()); setVolumeTracking(storageService.calculateAccumulatedVolume()); };
 
   const generateWorkoutWithAI = async (targetUser = user, targetReadiness = readiness, targetEvents = scheduledEvents, focusPrompt?: string, schoolLogData: SchoolWorkoutLog | null = schoolLog): Promise<WorkoutPlan | null> => {
     setIsAiGenerating(true);
     const perfMap = buildPerformanceMap(workoutHistory);
     try {
-      const res = await fetch('/api/generate-workout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user: targetUser, readiness: targetReadiness, scheduledEvents: targetEvents, exercisePerformanceMap: perfMap, recentHistory: workoutHistory.slice(0, 12), recentSchoolLogs: storageService.getRecentSchoolLogs(14), customFocus: focusPrompt, schoolLog: schoolLogData, targetDate: todayKey() })
-      });
+      const res = await apiFetch('/api/generate-workout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        user: targetUser, readiness: targetReadiness, scheduledEvents: targetEvents, exercisePerformanceMap: perfMap,
+        recentHistory: workoutHistory.slice(0, 30), recentSchoolLogs: storageService.getRecentSchoolLogs(30), customFocus: focusPrompt, schoolLog: schoolLogData, targetDate: todayKey()
+      }) });
       if (!res.ok) throw new Error(`API ${res.status}`);
       const data = await res.json();
       const plan: WorkoutPlan = (data?.plan || data) as WorkoutPlan;
       if (!plan?.exercises?.length) throw new Error('AI returned no exercises');
       const fresh = { ...plan, id: plan.id || `ai-plan-${Date.now()}`, date: todayKey(), isAiGenerated: true, needsGeneration: false, status: 'planned' } as WorkoutPlan;
-      setTodayWorkout(fresh);
-      storageService.saveCurrentWorkoutPlan(fresh);
+      localStorage.setItem(generationGateKey(), '1');
+      setTodayWorkout(fresh); storageService.saveCurrentWorkoutPlan(fresh);
       syncToCloud(currentAccount, { profile: targetUser, readiness: targetReadiness, events: targetEvents, todayPlan: fresh });
       return fresh;
     } catch (error) {
       console.warn('Lifted AI generation failed:', error);
-      // Never replace an already-generated plan with a new fallback. A fallback is
-      // only allowed when the athlete explicitly asked to start today's session.
       const fallback = fitnessEngine.generateDailyWorkout(targetUser, targetReadiness, targetEvents, perfMap, schoolLogData);
       const safe = { ...fallback, date: todayKey(), needsGeneration: false, isAiGenerated: false } as WorkoutPlan;
-      setTodayWorkout(safe);
-      storageService.saveCurrentWorkoutPlan(safe);
+      localStorage.setItem(generationGateKey(), '1');
+      setTodayWorkout(safe); storageService.saveCurrentWorkoutPlan(safe);
       syncToCloud(currentAccount, { profile: targetUser, readiness: targetReadiness, events: targetEvents, todayPlan: safe });
       return safe;
     } finally { setIsAiGenerating(false); }
@@ -150,47 +146,33 @@ export function App() {
   const generateMorningRoutineWithAI = async () => {
     setIsRegeneratingMorning(true);
     try {
-      const res = await fetch('/api/generate-morning-routine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user, readiness, scheduledEvents, todayWorkout, recentHistory: workoutHistory.slice(0, 8), recentSchoolLogs: storageService.getRecentSchoolLogs(7) }) });
-      if (!res.ok) throw new Error('mobility api');
-      const data = await res.json();
-      if (!data?.routine) throw new Error('no routine');
+      const res = await apiFetch('/api/generate-morning-routine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user, readiness, scheduledEvents, todayWorkout, recentHistory: workoutHistory.slice(0, 12), recentSchoolLogs: storageService.getRecentSchoolLogs(14) }) });
+      if (!res.ok) throw new Error('mobility api'); const data = await res.json(); if (!data?.routine) throw new Error('no routine');
       setMobility(data.routine); storageService.saveMorningMobility(data.routine); return data.routine;
-    } catch {
-      const fallback = fitnessEngine.generateMorningMobility(user, readiness, 10); setMobility(fallback); storageService.saveMorningMobility(fallback); return fallback;
-    } finally { setIsRegeneratingMorning(false); }
+    } catch { const fallback = fitnessEngine.generateMorningMobility(user, readiness, 10); setMobility(fallback); storageService.saveMorningMobility(fallback); return fallback; }
+    finally { setIsRegeneratingMorning(false); }
   };
 
   const generateNightlyRoutineWithAI = async () => {
     setIsRegeneratingNightly(true);
     try {
-      const res = await fetch('/api/generate-nightly-routine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user, readiness, scheduledEvents, todayWorkout, recentHistory: workoutHistory.slice(0, 8) }) });
-      if (!res.ok) throw new Error('nightly api');
-      const data = await res.json();
-      if (!data?.routine) throw new Error('no routine');
+      const res = await apiFetch('/api/generate-nightly-routine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user, readiness, scheduledEvents, todayWorkout, recentHistory: workoutHistory.slice(0, 12), recentSchoolLogs: storageService.getRecentSchoolLogs(14) }) });
+      if (!res.ok) throw new Error('nightly api'); const data = await res.json(); if (!data?.routine) throw new Error('no routine');
       setNightlyRoutine(data.routine); storageService.saveNightlyRoutine(data.routine); return data.routine;
-    } catch {
-      const fallback = fitnessEngine.generateNightlyStretching(user, readiness, 10, todayWorkout); setNightlyRoutine(fallback); storageService.saveNightlyRoutine(fallback); return fallback;
-    } finally { setIsRegeneratingNightly(false); }
+    } catch { const fallback = fitnessEngine.generateNightlyStretching(user, readiness, 10, todayWorkout); setNightlyRoutine(fallback); storageService.saveNightlyRoutine(fallback); return fallback; }
+    finally { setIsRegeneratingNightly(false); }
   };
 
   const generatePlyometricsWithAI = async () => {
     try {
-      const res = await fetch('/api/generate-plyometrics', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user, readiness, schoolLog, recentHistory: workoutHistory.slice(0, 8) }) });
-      if (!res.ok) throw new Error('plyo api');
-      const data = await res.json();
-      if (!data?.routine) throw new Error('no routine');
+      const res = await apiFetch('/api/generate-plyometrics', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user, readiness, schoolLog, recentHistory: workoutHistory.slice(0, 12), recentSchoolLogs: storageService.getRecentSchoolLogs(14) }) });
+      if (!res.ok) throw new Error('plyo api'); const data = await res.json(); if (!data?.routine) throw new Error('no routine');
       setPlyometricsRoutine(data.routine); storageService.savePlyometricsRoutine(data.routine); return data.routine;
-    } catch {
-      const fallback = fitnessEngine.generateDailyPlyometricsRoutine(user, readiness, schoolLog, 10); setPlyometricsRoutine(fallback); storageService.savePlyometricsRoutine(fallback); return fallback;
-    }
+    } catch { const fallback = fitnessEngine.generateDailyPlyometricsRoutine(user, readiness, schoolLog, 10); setPlyometricsRoutine(fallback); storageService.savePlyometricsRoutine(fallback); return fallback; }
   };
 
   const handleStartTodayWorkout = () => {
-    if (todayWorkout.needsGeneration || !todayWorkout.exercises?.length) {
-      setPendingStart(true);
-      setShowCheckInModal(true);
-      return;
-    }
+    if (todayWorkout.needsGeneration || !todayWorkout.exercises?.length) { setPendingStart(true); setShowCheckInModal(true); return; }
     setActiveWorkoutTarget('today'); setIsWorkingOut(true);
   };
 
@@ -206,33 +188,21 @@ export function App() {
       setPendingStart(false);
       const plan = await generateWorkoutWithAI(updatedUser, newReadiness, scheduledEvents, undefined, schoolLog);
       if (plan) { setActiveWorkoutTarget('today'); setIsWorkingOut(true); }
-    } else {
-      // A manual check-in is allowed to inform the coach, but does not silently
-      // replace a workout already generated for today.
-      syncToCloud(currentAccount, { profile: updatedUser, readiness: newReadiness });
-    }
+    } else syncToCloud(currentAccount, { profile: updatedUser, readiness: newReadiness });
   };
 
-  const handleAddEvent = (event: ScheduledEvent) => {
-    const updated = [...scheduledEvents, event]; setScheduledEvents(updated); storageService.saveScheduledEvents(updated); syncToCloud(currentAccount, { events: updated });
-  };
-  const handleRemoveEvent = (id: string) => {
-    const updated = scheduledEvents.filter((e) => e.id !== id); setScheduledEvents(updated); storageService.saveScheduledEvents(updated); syncToCloud(currentAccount, { events: updated });
-  };
+  const handleAddEvent = (event: ScheduledEvent) => { const updated = [...scheduledEvents, event]; setScheduledEvents(updated); storageService.saveScheduledEvents(updated); syncToCloud(currentAccount, { events: updated }); };
+  const handleRemoveEvent = (id: string) => { const updated = scheduledEvents.filter((e) => e.id !== id); setScheduledEvents(updated); storageService.saveScheduledEvents(updated); syncToCloud(currentAccount, { events: updated }); };
   const handleStartAdditionalWorkout = () => { if (additionalWorkout) { setActiveWorkoutTarget('additional'); setIsWorkingOut(true); } };
-  const handleSaveInProgressWorkout = (plan: WorkoutPlan) => {
-    if (activeWorkoutTarget === 'today') { setTodayWorkout(plan); storageService.saveCurrentWorkoutPlan(plan); syncToCloud(currentAccount, { todayPlan: plan }); }
-    else { setAdditionalWorkout(plan); storageService.saveAdditionalWorkout(plan); syncToCloud(currentAccount, { additionalWorkout: plan }); }
-  };
+  const handleSaveInProgressWorkout = (plan: WorkoutPlan) => { if (activeWorkoutTarget === 'today') { setTodayWorkout(plan); storageService.saveCurrentWorkoutPlan(plan); syncToCloud(currentAccount, { todayPlan: plan }); } else { setAdditionalWorkout(plan); storageService.saveAdditionalWorkout(plan); syncToCloud(currentAccount, { additionalWorkout: plan }); } };
   const handleFinishWorkout = (completed: WorkoutPlan) => {
-    const history = [completed, ...workoutHistory.filter((w) => w.id !== completed.id)];
-    setWorkoutHistory(history); storageService.saveWorkoutHistory(history); storageService.recordExercisePerformance(completed);
+    const history = [completed, ...workoutHistory.filter((w) => w.id !== completed.id)]; setWorkoutHistory(history); storageService.saveWorkoutHistory(history); storageService.recordExercisePerformance(completed);
     if (activeWorkoutTarget === 'today') { setTodayWorkout(completed); storageService.saveCurrentWorkoutPlan(completed); syncToCloud(currentAccount, { history, todayPlan: completed }); }
     else { setAdditionalWorkout(null); storageService.deleteAdditionalWorkout(); syncToCloud(currentAccount, { history, additionalWorkout: null }); }
     setIsWorkingOut(false); setActiveTab('history'); refreshStats();
   };
   const handleDeleteWorkout = (id: string) => { const history = workoutHistory.filter((w) => w.id !== id); setWorkoutHistory(history); storageService.deleteWorkoutHistoryItem(id); syncToCloud(currentAccount, { history }); refreshStats(); };
-  const handleDeleteCurrentWorkout = () => { handleDeleteWorkout(activeWorkoutTarget === 'today' ? todayWorkout.id : additionalWorkout?.id || ''); setIsWorkingOut(false); };
+  const handleDeleteCurrentWorkout = () => { handleDeleteWorkout(activeWorkoutTarget === 'today' ? todayWorkout.id : additionalWorkout?.id || ''); localStorage.removeItem(generationGateKey()); setTodayWorkout(readyPlan()); setIsWorkingOut(false); };
   const handleSaveSchoolLog = (log: SchoolWorkoutLog) => { storageService.addSchoolWorkoutLog(log); setSchoolLog(storageService.getTodaySchoolWorkoutLog()); setShowSchoolLogModal(false); refreshStats(); syncToCloud(currentAccount); };
   const handleSwapExercise = (exerciseId: string) => { const updated = fitnessEngine.swapExercise(todayWorkout, exerciseId, user); setTodayWorkout(updated); storageService.saveCurrentWorkoutPlan(updated); syncToCloud(currentAccount, { todayPlan: updated }); };
   const handleQuickAdjustTime = (minutes: number) => { const next = { ...readiness, availableMinutes: minutes }; setReadiness(next); storageService.saveDailyReadiness(next); };
@@ -245,8 +215,8 @@ export function App() {
       if (cloudData.profile) { setUser(cloudData.profile); storageService.saveUserProfile(cloudData.profile); }
       if (cloudData.readiness) { setReadiness(cloudData.readiness); storageService.saveDailyReadiness(cloudData.readiness); }
       if (cloudData.events) { setScheduledEvents(cloudData.events); storageService.saveScheduledEvents(cloudData.events); }
-      if (cloudData.history) { setWorkoutHistory(cloudData.history.filter((w: WorkoutPlan) => w.id !== 'hist-1')); storageService.saveWorkoutHistory(cloudData.history); storageService.rebuildExercisePerformanceMap(cloudData.history); }
-      if (cloudData.todayPlan) { setTodayWorkout(cloudData.todayPlan); storageService.saveCurrentWorkoutPlan(cloudData.todayPlan); }
+      if (cloudData.history) { const clean = cloudData.history.filter((w: WorkoutPlan) => w.id !== 'hist-1'); setWorkoutHistory(clean); storageService.saveWorkoutHistory(clean); storageService.rebuildExercisePerformanceMap(clean); }
+      if (cloudData.todayPlan?.exercises?.length && cloudData.todayPlan.date === todayKey()) { localStorage.setItem(generationGateKey(), '1'); setTodayWorkout(cloudData.todayPlan); storageService.saveCurrentWorkoutPlan(cloudData.todayPlan); }
       if (cloudData.additionalWorkout !== undefined) { setAdditionalWorkout(cloudData.additionalWorkout || null); if (cloudData.additionalWorkout) storageService.saveAdditionalWorkout(cloudData.additionalWorkout); }
       if (cloudData.chatMessages) { setChatMessages(cloudData.chatMessages); storageService.saveChatMessages(cloudData.chatMessages); }
       refreshStats();
@@ -256,19 +226,20 @@ export function App() {
   const handleResetData = () => { storageService.clearAll(); window.location.reload(); };
 
   useEffect(() => {
-    // Deliberately no AI generation here. Opening/reloading the app is read-only.
-    // AI generation starts only from an explicit user action.
+    const refreshFromDataChange = () => { setWorkoutHistory(storageService.getWorkoutHistory()); setScheduledEvents(storageService.getScheduledEvents()); setChatMessages(storageService.getChatMessages()); setSchoolLog(storageService.getTodaySchoolWorkoutLog()); setTodayWorkout(getSavedTodayPlan() || readyPlan()); refreshStats(); };
+    window.addEventListener('lifted-data-changed', refreshFromDataChange);
+    return () => window.removeEventListener('lifted-data-changed', refreshFromDataChange);
   }, []);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-emerald-400 selection:text-black">
       <Header user={user} currentAccount={currentAccount} activeTab={activeTab} onTabChange={setActiveTab} readiness={readiness} scheduledEvents={scheduledEvents} onOpenCheckIn={() => setShowCheckInModal(true)} onOpenSettings={() => setShowSettingsModal(true)} onOpenAuth={() => setShowAuthModal(true)} onOpenCustomWorkout={() => setShowCustomWorkoutModal(true)} />
       <main className="flex-1 max-w-5xl w-full mx-auto p-3 sm:p-6">
-        {activeTab === 'today' && <TodayScreen user={user} readiness={readiness} todayWorkout={todayWorkout} mobility={mobility} nightlyRoutine={nightlyRoutine} plyometricsRoutine={plyometricsRoutine} schoolLog={schoolLog} dailyStreak={dailyStreak} volumeTracking={volumeTracking} scheduledEvents={scheduledEvents} workoutHistory={workoutHistory} isAiGenerating={isAiGenerating} isRegeneratingMorning={isRegeneratingMorning} isRegeneratingNightly={isRegeneratingNightly} onRegenerateWorkout={(focus) => { setPendingStart(true); setShowCheckInModal(true); }} onRegenerateMorning={async () => { await generateMorningRoutineWithAI(); }} onRegenerateNightly={async () => { await generateNightlyRoutineWithAI(); }} onStartWorkout={handleStartTodayWorkout} onStartAdditionalWorkout={handleStartAdditionalWorkout} onDeleteAdditionalWorkout={() => { if (!additionalWorkout) return; storageService.deleteAdditionalWorkout(); setAdditionalWorkout(null); }} onDeleteTodayWorkout={() => { setTodayWorkout(readyPlan()); localStorage.removeItem('ai_coach_today_workout_v1'); }} onStartMobility={async () => { const routine = await generateMorningRoutineWithAI(); if (routine) setIsDoingMobility(true); }} onStartNightly={async () => { const routine = await generateNightlyRoutineWithAI(); if (routine) setIsDoingNightly(true); }} onStartPlyometrics={async () => { const routine = await generatePlyometricsWithAI(); if (routine) setIsDoingPlyometrics(true); }} onOpenSchoolLog={() => setShowSchoolLogModal(true)} onOpenCheckIn={() => setShowCheckInModal(true)} onSwapExercise={handleSwapExercise} onQuickAdjustTime={handleQuickAdjustTime} onOpenCustomWorkout={() => setShowCustomWorkoutModal(true)} />}
+        {activeTab === 'today' && <TodayScreen user={user} readiness={readiness} todayWorkout={todayWorkout} mobility={mobility} nightlyRoutine={nightlyRoutine} plyometricsRoutine={plyometricsRoutine} schoolLog={schoolLog} dailyStreak={dailyStreak} volumeTracking={volumeTracking} scheduledEvents={scheduledEvents} workoutHistory={workoutHistory} isAiGenerating={isAiGenerating} isRegeneratingMorning={isRegeneratingMorning} isRegeneratingNightly={isRegeneratingNightly} onRegenerateWorkout={() => { localStorage.removeItem(generationGateKey()); setTodayWorkout(readyPlan()); setPendingStart(true); setShowCheckInModal(true); }} onRegenerateMorning={async () => { await generateMorningRoutineWithAI(); }} onRegenerateNightly={async () => { await generateNightlyRoutineWithAI(); }} onStartWorkout={handleStartTodayWorkout} onStartAdditionalWorkout={handleStartAdditionalWorkout} onDeleteAdditionalWorkout={() => { if (!additionalWorkout) return; storageService.deleteAdditionalWorkout(); setAdditionalWorkout(null); }} onDeleteTodayWorkout={() => { setTodayWorkout(readyPlan()); localStorage.removeItem('ai_coach_today_workout_v1'); localStorage.removeItem(generationGateKey()); }} onStartMobility={async () => { const routine = await generateMorningRoutineWithAI(); if (routine) setIsDoingMobility(true); }} onStartNightly={async () => { const routine = await generateNightlyRoutineWithAI(); if (routine) setIsDoingNightly(true); }} onStartPlyometrics={async () => { const routine = await generatePlyometricsWithAI(); if (routine) setIsDoingPlyometrics(true); }} onOpenSchoolLog={() => setShowSchoolLogModal(true)} onOpenCheckIn={() => setShowCheckInModal(true)} onSwapExercise={handleSwapExercise} onQuickAdjustTime={handleQuickAdjustTime} onOpenCustomWorkout={() => setShowCustomWorkoutModal(true)} />}
         {activeTab === 'calendar' && <CalendarScreen user={user} scheduledEvents={scheduledEvents} workoutHistory={workoutHistory} onAddEvent={handleAddEvent} onRemoveEvent={handleRemoveEvent} todayWorkout={todayWorkout} />}
         {activeTab === 'history' && <HistoryScreen workoutHistory={workoutHistory} onDeleteWorkout={handleDeleteWorkout} />}
         {activeTab === 'progress' && <ProgressScreen user={user} history={workoutHistory} dailyStreak={dailyStreak} volumeTracking={volumeTracking} schoolLogs={storageService.getSchoolWorkoutLogs()} />}
-        {activeTab === 'coach' && <AICoachScreen user={user} currentPlan={todayWorkout} scheduledEvents={scheduledEvents} chatMessages={chatMessages} onSaveMessages={handleSaveMessages} />}
+        {activeTab === 'coach' && <AICoachScreen user={user} readiness={readiness} currentPlan={todayWorkout} workoutHistory={workoutHistory} scheduledEvents={scheduledEvents} schoolLogs={storageService.getSchoolWorkoutLogs()} chatMessages={chatMessages} onSaveMessages={handleSaveMessages} />}
       </main>
 
       {isWorkingOut && <ActiveWorkoutModal workout={activeWorkoutTarget === 'today' ? todayWorkout : (additionalWorkout || todayWorkout)} user={user} workoutHistory={workoutHistory} onFinishWorkout={handleFinishWorkout} onSaveInProgress={handleSaveInProgressWorkout} onDeleteWorkout={handleDeleteCurrentWorkout} onClose={() => setIsWorkingOut(false)} />}
@@ -280,7 +251,7 @@ export function App() {
       {showSettingsModal && <SettingsModal user={user} onSave={handleSaveSettings} onResetData={handleResetData} onClose={() => setShowSettingsModal(false)} />}
       {showAuthModal && <AuthModal currentAccount={currentAccount} onLoginSuccess={handleLoginSuccess} onLogout={handleLogout} onClose={() => setShowAuthModal(false)} />}
       {!user.onboardingCompleted && <OnboardingModal onComplete={(profile) => { setUser(profile); storageService.saveUserProfile(profile); }} />}
-      {showCustomWorkoutModal && <CustomWorkoutModal isOpen={showCustomWorkoutModal} user={user} workoutHistory={workoutHistory} savedTemplates={storageService.getCustomWorkoutTemplates()} onSaveWorkout={(plan, startImmediately = false, mode = 'replace') => { if (mode === 'replace') { setTodayWorkout(plan); storageService.saveCurrentWorkoutPlan(plan); setActiveWorkoutTarget('today'); } else { setAdditionalWorkout(plan); storageService.saveAdditionalWorkout(plan); setActiveWorkoutTarget('additional'); } setShowCustomWorkoutModal(false); if (startImmediately) setIsWorkingOut(true); }} onSaveTemplate={(template) => storageService.addCustomWorkoutTemplate(template)} onClose={() => setShowCustomWorkoutModal(false)} />}
+      {showCustomWorkoutModal && <CustomWorkoutModal isOpen={showCustomWorkoutModal} user={user} workoutHistory={workoutHistory} savedTemplates={storageService.getCustomWorkoutTemplates()} onSaveWorkout={(plan, startImmediately = false, mode = 'replace') => { if (mode === 'replace') { setTodayWorkout(plan); storageService.saveCurrentWorkoutPlan(plan); localStorage.setItem(generationGateKey(), '1'); setActiveWorkoutTarget('today'); } else { setAdditionalWorkout(plan); storageService.saveAdditionalWorkout(plan); setActiveWorkoutTarget('additional'); } setShowCustomWorkoutModal(false); if (startImmediately) setIsWorkingOut(true); }} onSaveTemplate={(template) => storageService.addCustomWorkoutTemplate(template)} onClose={() => setShowCustomWorkoutModal(false)} />}
     </div>
   );
 }

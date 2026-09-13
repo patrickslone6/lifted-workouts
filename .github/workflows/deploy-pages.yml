@@ -1,6 +1,8 @@
 name: Deploy Lifted to GitHub Pages
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -16,6 +18,8 @@ concurrency:
 
 env:
   VITE_API_BASE_URL: https://lifted-workouts.onrender.com
+  VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+  VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
 jobs:
   build:
@@ -28,22 +32,29 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Install dependencies
         run: npm install
+
+      - name: TypeScript syntax check
+        run: npm run lint
 
       - name: Build frontend
         run: npx vite build --base=/lifted-workouts/
 
       - name: Configure Pages
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./dist
 
   deploy:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
