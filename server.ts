@@ -227,15 +227,31 @@ app.post('/api/generate-plyometrics', async (req, res) => {
 });
 
 app.post('/api/coach-chat', async (req, res) => {
+  const body = req.body || {};
+  const question = String(body.message || body.question || '').trim();
+  const fullPrompt = `You are Lifted Coach AI. Answer the athlete's question using the complete context below. Give practical, concise, age-appropriate coaching advice based on past workouts, exact weights/sets/reps, difficulty feedback, readiness, injuries, school lifting, practice, games, future events, mobility and plyometric activity. Do not invent data. If the question involves pain or an injury, recommend stopping an aggravating movement and involving a qualified adult/clinician rather than diagnosing. Context: ${athleteContext(body)}\nQuestion: ${question}. Return JSON {reply:string,actionItems:string[],relevantData:string[]}.`;
   try {
-    const prompt = `You are Lifted Coach AI. Answer the athlete's question using the complete context below. Give practical, concise, age-appropriate coaching advice based on past workouts, exact weights/sets/reps, difficulty feedback, readiness, injuries, school lifting, practice, games, future events, mobility and plyometric activity. Do not invent data. If the question involves pain or an injury, recommend stopping an aggravating movement and involving a qualified adult/clinician rather than diagnosing. Context: ${athleteContext(req.body)}\nQuestion: ${req.body?.message || req.body?.question || ''}. Return JSON {reply:string,actionItems:string[],relevantData:string[]}.`;
-    return res.json({ success: true, ...(await askAI(prompt)) });
-  } catch (e) { console.warn('Coach AI unavailable:', e); return res.json({ success: true, reply: 'Coach AI is temporarily unavailable. Your saved training data is still safe.', actionItems: [], relevantData: [] }); }
-});
-
-app.post('/api/exercise-summary', async (req, res) => {
-  try { const summary = await askAI(`Explain this exercise for a youth athlete in a clear coaching format. Use the supplied athlete context and injury restrictions. Never diagnose. Return JSON {whatItIs,howToDoIt,whatItExercises:{primary,secondary,movementPattern},whyThisWeight:{weightRationale,hypertrophyMechanism,injuryPreventionFocus,progressionContext}}. Exercise: ${JSON.stringify(req.body?.exercise || req.body?.name)} Context: ${athleteContext(req.body)}`); return res.json({ success: true, summary }); }
-  catch (e) { console.warn('Exercise AI unavailable:', e); return res.status(503).json({ error: 'AI exercise summary unavailable' }); }
+    const answer = await askAI(fullPrompt, 'minimal');
+    return res.json({ success: true, ...answer });
+  } catch (firstError) {
+    console.warn('Coach AI primary attempt failed:', firstError);
+    try {
+      const compact = {
+        athlete: body.user || {}, readiness: body.readiness || {}, todayWorkout: body.todayWorkout || {},
+        recentHistory: Array.isArray(body.recentHistory) ? body.recentHistory.slice(0, 8) : [],
+        scheduledEvents: Array.isArray(body.scheduledEvents) ? body.scheduledEvents.slice(0, 10) : [],
+        recentSchoolLogs: Array.isArray(body.recentSchoolLogs) ? body.recentSchoolLogs.slice(0, 10) : [],
+        activityLog: Array.isArray(body.activityLog) ? body.activityLog.slice(-10) : [],
+        trainingSnapshot: body.trainingSnapshot || {}
+      };
+      const retryPrompt = `You are Lifted Coach AI. Give a concise, useful, age-appropriate answer to the athlete's question. Use only the supplied facts, do not invent training history, and do not diagnose injuries. If pain is involved, advise stopping the aggravating movement and involving a qualified adult/clinician. Return JSON {reply:string,actionItems:string[],relevantData:string[]}. Athlete context: ${JSON.stringify(compact)}\nQuestion: ${question}`;
+      const answer = await askAI(retryPrompt, 'minimal');
+      return res.json({ success: true, ...answer, retried: true });
+    } catch (retryError) {
+      console.error('Coach AI retry failed:', retryError);
+      return res.status(503).json({ error: 'Coach AI is temporarily unavailable. Please try again.' });
+    }
+  }
 });
 
 app.post('/api/weekly-summary', async (req, res) => {
