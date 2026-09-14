@@ -53,9 +53,20 @@ export const AICoachScreen: React.FC<Props> = ({
       const completeSchoolLogs = schoolLogs.length ? schoolLogs : storageService.getSchoolWorkoutLogs();
       const completeReadiness = readiness || storageService.getDailyReadiness();
       const response = await apiFetch('/api/coach-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-        message: text, history: next.slice(-60), user, readiness: completeReadiness, recentHistory: completeHistory.slice(0, 30), scheduledEvents,
-        recentSchoolLogs: completeSchoolLogs.slice(0, 30), activityLog: storageService.getActivityLog(), trainingSnapshot: storageService.getTrainingSnapshot(), todayWorkout: currentPlan,
-        customFocus: `Recent Coach conversation: ${JSON.stringify(next.slice(-40))}`, targetDate: new Date().toISOString().slice(0, 10),
+        message: text,
+        history: next.slice(-12),
+        user,
+        readiness: completeReadiness,
+        recentHistory: completeHistory.slice(0, 8).map((w) => ({
+          id: w.id, date: w.date, workoutTitle: w.workoutTitle, status: w.status,
+          exercises: (w.exercises || []).map((ex) => ({ name: ex.name, exerciseId: ex.exerciseId, sets: ex.sets, reps: ex.reps, recommendedWeight: ex.recommendedWeight, actualWeightUsed: ex.actualWeightUsed, feedbackDifficulty: ex.feedbackDifficulty, painReported: ex.painReported, completed: ex.completed }))
+        })),
+        scheduledEvents: scheduledEvents.slice(0, 14),
+        recentSchoolLogs: completeSchoolLogs.slice(0, 10),
+        activityLog: storageService.getActivityLog().slice(-10),
+        trainingSnapshot: storageService.getTrainingSnapshot(),
+        todayWorkout: { id: currentPlan?.id, date: currentPlan?.date, workoutTitle: currentPlan?.workoutTitle, goal: currentPlan?.goal, status: currentPlan?.status, exercises: (currentPlan?.exercises || []).map((ex) => ({ name: ex.name, sets: ex.sets, reps: ex.reps, recommendedWeight: ex.recommendedWeight, restSeconds: ex.restSeconds, feedbackDifficulty: ex.feedbackDifficulty })) },
+        customFocus: 'Answer the athlete using the supplied recent training context. Do not invent missing history.'
       }) });
       const raw = await response.text(); let data: any = {};
       try { data = raw ? JSON.parse(raw) : {}; } catch { throw new Error(`Coach returned invalid data (${response.status}).`); }
