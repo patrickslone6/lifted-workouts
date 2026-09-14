@@ -1,0 +1,1 @@
+This file triggers the normal CI and GitHub Pages deployment after an automated repair.
