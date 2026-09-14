@@ -68,6 +68,7 @@ interface Props {
   isRegeneratingMorning?: boolean;
   isRegeneratingNightly?: boolean;
   onRegenerateWorkout?: (focus?: string) => void;
+  onGenerateWorkout?: () => void;
   onRegenerateMorning?: () => void;
   onRegenerateNightly?: () => void;
   onStartWorkout: () => void;
@@ -97,6 +98,7 @@ export const TodayScreen: React.FC<Props> = ({
   isRegeneratingMorning = false,
   isRegeneratingNightly = false,
   onRegenerateWorkout,
+  onGenerateWorkout,
   onRegenerateMorning,
   onRegenerateNightly,
   onStartWorkout,
@@ -479,6 +481,16 @@ export const TodayScreen: React.FC<Props> = ({
             );
           })}
         </div>
+
+        {/* Explicit daily generation: preview first, start only when the athlete chooses. */}
+        {onGenerateWorkout && todayWorkout.needsGeneration && (
+          <div className="pt-3">
+            <button id="generate-workout-btn" onClick={onGenerateWorkout} disabled={isAiGenerating} className="w-full py-3.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-black text-sm tracking-wide transition shadow-lg shadow-cyan-950/40 flex items-center justify-center gap-2 disabled:opacity-60">
+              <Sparkles className="w-4 h-4" /> Generate &amp; Preview Today's Workout
+            </button>
+            <p className="text-[11px] text-zinc-500 text-center mt-2">Generation uses your check-in and today's full training context. The plan stays fixed for today until you request a new one.</p>
+          </div>
+        )}
 
         {/* Start Workout Button */}
         <div className="pt-3">

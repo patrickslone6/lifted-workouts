@@ -19,8 +19,11 @@ import { SettingsModal } from './components/SettingsModal';
 import { OnboardingModal } from './components/OnboardingModal';
 import { AuthModal } from './components/AuthModal';
 import { CustomWorkoutModal } from './components/CustomWorkoutModal';
+import { WeeklyPlanningModal } from './components/WeeklyPlanningModal';
 
-const todayKey = () => new Date().toISOString().slice(0, 10);
+const todayKey = () => { const d = new Date(); return d.toLocaleDateString('en-CA'); };
+const weekStartKey = (dateKey = todayKey()) => { const d = new Date(dateKey + 'T12:00:00'); d.setDate(d.getDate() - d.getDay()); return d.toLocaleDateString('en-CA'); };
+const weeklyPlannerKey = (week = weekStartKey()) => 'lifted_week_plan_ack_' + week;
 const generationGateKey = (date = todayKey()) => `lifted_workout_generation_gate_${date}`;
 
 function getSavedTodayPlan(): WorkoutPlan | null {
@@ -78,6 +81,7 @@ export function App() {
   const [isAiGenerating, setIsAiGenerating] = useState(false);
   const [isRegeneratingMorning, setIsRegeneratingMorning] = useState(false);
   const [isRegeneratingNightly, setIsRegeneratingNightly] = useState(false);
+  const [showWeeklyPlanner, setShowWeeklyPlanner] = useState(false);
 
   const buildPerformanceMap = useCallback((history: WorkoutPlan[]) => {
     const map: Record<string, any> = {};
@@ -109,6 +113,7 @@ export function App() {
       profile: customState.profile || user, readiness: customState.readiness || readiness, events: customState.events || scheduledEvents,
       history: customState.history || workoutHistory, todayPlan: customState.todayPlan || todayWorkout,
       additionalWorkout: customState.additionalWorkout !== undefined ? customState.additionalWorkout : additionalWorkout,
+      weeklyPlanWeekKey: customState.weeklyPlanWeekKey !== undefined ? customState.weeklyPlanWeekKey : (localStorage.getItem(weeklyPlannerKey()) === '1' ? weekStartKey() : undefined),
       schoolLogs: storageService.getSchoolWorkoutLogs(), chatMessages: customState.chatMessages || chatMessages
     });
   }, [currentAccount, user, readiness, scheduledEvents, workoutHistory, todayWorkout, additionalWorkout, chatMessages]);
@@ -184,11 +189,22 @@ export function App() {
       setUser(updatedUser); storageService.saveUserProfile(updatedUser);
     }
     setShowCheckInModal(false);
-    if (pendingStart) {
+    if (pendingStart || todayWorkout.needsGeneration || !todayWorkout.exercises?.length) {
+      const shouldStart = pendingStart;
       setPendingStart(false);
       const plan = await generateWorkoutWithAI(updatedUser, newReadiness, scheduledEvents, undefined, schoolLog);
-      if (plan) { setActiveWorkoutTarget('today'); setIsWorkingOut(true); }
+      if (plan && shouldStart) { setActiveWorkoutTarget('today'); setIsWorkingOut(true); }
     } else syncToCloud(currentAccount, { profile: updatedUser, readiness: newReadiness });
+  };
+
+  const handleWeeklyPlanSave = (events: ScheduledEvent[], weekKey: string) => {
+    const start = new Date(weekKey + 'T12:00:00');
+    const end = new Date(start); end.setDate(end.getDate() + 6);
+    const endKey = end.toLocaleDateString('en-CA');
+    const updated = [...scheduledEvents.filter((e) => e.date < weekKey || e.date > endKey), ...events];
+    setScheduledEvents(updated); storageService.saveScheduledEvents(updated);
+    localStorage.setItem(weeklyPlannerKey(weekKey), '1'); setShowWeeklyPlanner(false);
+    syncToCloud(currentAccount, { events: updated, weeklyPlanWeekKey: weekKey });
   };
 
   const handleAddEvent = (event: ScheduledEvent) => { const updated = [...scheduledEvents, event]; setScheduledEvents(updated); storageService.saveScheduledEvents(updated); syncToCloud(currentAccount, { events: updated }); };
@@ -215,6 +231,7 @@ export function App() {
       if (cloudData.profile) { setUser(cloudData.profile); storageService.saveUserProfile(cloudData.profile); }
       if (cloudData.readiness) { setReadiness(cloudData.readiness); storageService.saveDailyReadiness(cloudData.readiness); }
       if (cloudData.events) { setScheduledEvents(cloudData.events); storageService.saveScheduledEvents(cloudData.events); }
+      if (cloudData.weeklyPlanWeekKey) { localStorage.setItem(weeklyPlannerKey(cloudData.weeklyPlanWeekKey), '1'); setShowWeeklyPlanner(false); }
       if (cloudData.history) { const clean = cloudData.history.filter((w: WorkoutPlan) => w.id !== 'hist-1'); setWorkoutHistory(clean); storageService.saveWorkoutHistory(clean); storageService.rebuildExercisePerformanceMap(clean); }
       if (cloudData.todayPlan?.exercises?.length && cloudData.todayPlan.date === todayKey()) { localStorage.setItem(generationGateKey(), '1'); setTodayWorkout(cloudData.todayPlan); storageService.saveCurrentWorkoutPlan(cloudData.todayPlan); }
       if (cloudData.additionalWorkout !== undefined) { setAdditionalWorkout(cloudData.additionalWorkout || null); if (cloudData.additionalWorkout) storageService.saveAdditionalWorkout(cloudData.additionalWorkout); }
@@ -226,6 +243,10 @@ export function App() {
   const handleResetData = () => { storageService.clearAll(); window.location.reload(); };
 
   useEffect(() => {
+    if (new Date().getDay() === 0 && localStorage.getItem(weeklyPlannerKey()) !== '1') setShowWeeklyPlanner(true);
+  }, []);
+
+  useEffect(() => {
     const refreshFromDataChange = () => { setWorkoutHistory(storageService.getWorkoutHistory()); setScheduledEvents(storageService.getScheduledEvents()); setChatMessages(storageService.getChatMessages()); setSchoolLog(storageService.getTodaySchoolWorkoutLog()); setTodayWorkout(getSavedTodayPlan() || readyPlan()); refreshStats(); };
     window.addEventListener('lifted-data-changed', refreshFromDataChange);
     return () => window.removeEventListener('lifted-data-changed', refreshFromDataChange);
@@ -233,9 +254,10 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-emerald-400 selection:text-black">
+      {isAiGenerating && <div className="lifted-ai-calibration" role="dialog" aria-modal="true" aria-label="Lifted AI calibration"><div className="lifted-ai-calibration-card"><div className="lifted-ai-spinner" /><h2>Calibrating your workout</h2><p>Lifted is reviewing your recent training, feedback, school workload, weekly schedule, and upcoming games before choosing today's session and loads.</p><small>Please wait — this screen is intentionally locked during calibration.</small></div></div>}
       <Header user={user} currentAccount={currentAccount} activeTab={activeTab} onTabChange={setActiveTab} readiness={readiness} scheduledEvents={scheduledEvents} onOpenCheckIn={() => setShowCheckInModal(true)} onOpenSettings={() => setShowSettingsModal(true)} onOpenAuth={() => setShowAuthModal(true)} onOpenCustomWorkout={() => setShowCustomWorkoutModal(true)} />
       <main className="flex-1 max-w-5xl w-full mx-auto p-3 sm:p-6">
-        {activeTab === 'today' && <TodayScreen user={user} readiness={readiness} todayWorkout={todayWorkout} mobility={mobility} nightlyRoutine={nightlyRoutine} plyometricsRoutine={plyometricsRoutine} schoolLog={schoolLog} dailyStreak={dailyStreak} volumeTracking={volumeTracking} scheduledEvents={scheduledEvents} workoutHistory={workoutHistory} isAiGenerating={isAiGenerating} isRegeneratingMorning={isRegeneratingMorning} isRegeneratingNightly={isRegeneratingNightly} onRegenerateWorkout={() => { localStorage.removeItem(generationGateKey()); setTodayWorkout(readyPlan()); setPendingStart(true); setShowCheckInModal(true); }} onRegenerateMorning={async () => { await generateMorningRoutineWithAI(); }} onRegenerateNightly={async () => { await generateNightlyRoutineWithAI(); }} onStartWorkout={handleStartTodayWorkout} onStartAdditionalWorkout={handleStartAdditionalWorkout} onDeleteAdditionalWorkout={() => { if (!additionalWorkout) return; storageService.deleteAdditionalWorkout(); setAdditionalWorkout(null); }} onDeleteTodayWorkout={() => { setTodayWorkout(readyPlan()); localStorage.removeItem('ai_coach_today_workout_v1'); localStorage.removeItem(generationGateKey()); }} onStartMobility={async () => { const routine = await generateMorningRoutineWithAI(); if (routine) setIsDoingMobility(true); }} onStartNightly={async () => { const routine = await generateNightlyRoutineWithAI(); if (routine) setIsDoingNightly(true); }} onStartPlyometrics={async () => { const routine = await generatePlyometricsWithAI(); if (routine) setIsDoingPlyometrics(true); }} onOpenSchoolLog={() => setShowSchoolLogModal(true)} onOpenCheckIn={() => setShowCheckInModal(true)} onSwapExercise={handleSwapExercise} onQuickAdjustTime={handleQuickAdjustTime} onOpenCustomWorkout={() => setShowCustomWorkoutModal(true)} />}
+        {activeTab === 'today' && <TodayScreen user={user} readiness={readiness} todayWorkout={todayWorkout} mobility={mobility} nightlyRoutine={nightlyRoutine} plyometricsRoutine={plyometricsRoutine} schoolLog={schoolLog} dailyStreak={dailyStreak} volumeTracking={volumeTracking} scheduledEvents={scheduledEvents} workoutHistory={workoutHistory} isAiGenerating={isAiGenerating} isRegeneratingMorning={isRegeneratingMorning} isRegeneratingNightly={isRegeneratingNightly} onRegenerateWorkout={() => { localStorage.removeItem(generationGateKey()); setTodayWorkout(readyPlan()); setPendingStart(false); setShowCheckInModal(true); }} onGenerateWorkout={() => { if (todayWorkout.needsGeneration || !todayWorkout.exercises?.length) { setPendingStart(false); setShowCheckInModal(true); } }} onRegenerateMorning={async () => { await generateMorningRoutineWithAI(); }} onRegenerateNightly={async () => { await generateNightlyRoutineWithAI(); }} onStartWorkout={handleStartTodayWorkout} onStartAdditionalWorkout={handleStartAdditionalWorkout} onDeleteAdditionalWorkout={() => { if (!additionalWorkout) return; storageService.deleteAdditionalWorkout(); setAdditionalWorkout(null); }} onDeleteTodayWorkout={() => { setTodayWorkout(readyPlan()); localStorage.removeItem('ai_coach_today_workout_v1'); localStorage.removeItem(generationGateKey()); }} onStartMobility={async () => { const routine = await generateMorningRoutineWithAI(); if (routine) setIsDoingMobility(true); }} onStartNightly={async () => { const routine = await generateNightlyRoutineWithAI(); if (routine) setIsDoingNightly(true); }} onStartPlyometrics={async () => { const routine = await generatePlyometricsWithAI(); if (routine) setIsDoingPlyometrics(true); }} onOpenSchoolLog={() => setShowSchoolLogModal(true)} onOpenCheckIn={() => setShowCheckInModal(true)} onSwapExercise={handleSwapExercise} onQuickAdjustTime={handleQuickAdjustTime} onOpenCustomWorkout={() => setShowCustomWorkoutModal(true)} />}
         {activeTab === 'calendar' && <CalendarScreen user={user} scheduledEvents={scheduledEvents} workoutHistory={workoutHistory} onAddEvent={handleAddEvent} onRemoveEvent={handleRemoveEvent} todayWorkout={todayWorkout} />}
         {activeTab === 'history' && <HistoryScreen workoutHistory={workoutHistory} onDeleteWorkout={handleDeleteWorkout} />}
         {activeTab === 'progress' && <ProgressScreen user={user} history={workoutHistory} dailyStreak={dailyStreak} volumeTracking={volumeTracking} schoolLogs={storageService.getSchoolWorkoutLogs()} />}
@@ -247,6 +269,7 @@ export function App() {
       {isDoingNightly && <NightlyRoutineModal routine={nightlyRoutine} onComplete={() => { const next = { ...nightlyRoutine, completed: true }; setNightlyRoutine(next); storageService.saveNightlyRoutine(next); storageService.recordActivity('nightly', next.date, 1); setIsDoingNightly(false); refreshStats(); }} onClose={() => setIsDoingNightly(false)} />}
       {isDoingPlyometrics && <PlyometricsModal routine={plyometricsRoutine} onComplete={() => { const next = { ...plyometricsRoutine, completed: true }; setPlyometricsRoutine(next); storageService.savePlyometricsRoutine(next); setIsDoingPlyometrics(false); refreshStats(); }} onClose={() => setIsDoingPlyometrics(false)} />}
       {showSchoolLogModal && <LogSchoolWorkoutModal existingLog={schoolLog} onSave={handleSaveSchoolLog} onClose={() => setShowSchoolLogModal(false)} />}
+      {showWeeklyPlanner && <WeeklyPlanningModal initialEvents={scheduledEvents} weekStart={weekStartKey()} onSave={handleWeeklyPlanSave} />}
       {showCheckInModal && <DailyCheckInModal user={user} initialReadiness={readiness} onSave={handleSaveCheckIn} onClose={() => { setPendingStart(false); setShowCheckInModal(false); }} />}
       {showSettingsModal && <SettingsModal user={user} onSave={handleSaveSettings} onResetData={handleResetData} onClose={() => setShowSettingsModal(false)} />}
       {showAuthModal && <AuthModal currentAccount={currentAccount} onLoginSuccess={handleLoginSuccess} onLogout={handleLogout} onClose={() => setShowAuthModal(false)} />}

@@ -96,19 +96,21 @@ async function askAI(prompt: string, thinkingLevel: 'minimal' | 'low' = 'minimal
 function athleteContext(body: any) {
   const user = body.user || {};
   const readiness = body.readiness || {};
-  const events = body.scheduledEvents || [];
-  const history = body.recentHistory || body.recentWorkouts || [];
-  const schoolLogs = body.recentSchoolLogs || (body.schoolLog ? [body.schoolLog] : []);
-  return JSON.stringify({
-    athlete: user,
-    readiness,
-    scheduledEvents: events,
-    recentWorkouts: history.slice(0, 30),
-    recentSchoolActivities: schoolLogs.slice(0, 30),
-    exercisePerformance: body.exercisePerformanceMap || {},
-    targetDate: body.targetDate || today(),
-    customFocus: body.customFocus || ''
-  });
+  const events = Array.isArray(body.scheduledEvents) ? body.scheduledEvents : [];
+  const history = Array.isArray(body.recentHistory || body.recentWorkouts) ? (body.recentHistory || body.recentWorkouts) : [];
+  const schoolLogs = Array.isArray(body.recentSchoolLogs) ? body.recentSchoolLogs : (body.schoolLog ? [body.schoolLog] : []);
+  const targetDate = body.targetDate || today();
+  const target = new Date(targetDate + 'T12:00:00');
+  const dateShift = (days: number) => { const d = new Date(target); d.setDate(d.getDate() + days); return d.toLocaleDateString('en-CA'); };
+  const dayOfWeek = target.toLocaleDateString('en-US', { weekday: 'long' });
+  const recentStart = dateShift(-14);
+  const futureEnd = dateShift(14);
+  const recentWorkouts = history.filter((w: any) => w.date >= recentStart && w.date <= targetDate);
+  const upcomingEvents = events.filter((e: any) => e.date >= targetDate && e.date <= futureEnd).sort((a: any,b: any) => a.date.localeCompare(b.date));
+  const weekEvents = events.filter((e: any) => e.date >= dateShift(0) && e.date <= dateShift(6)).sort((a: any,b: any) => a.date.localeCompare(b.date));
+  const workload = recentWorkouts.map((w: any) => ({ date: w.date, title: w.workoutTitle, status: w.status, minutes: w.actualMinutes || w.estimatedMinutes || 0, exercises: (w.exercises || []).length, completedSets: (w.exercises || []).reduce((n: number, ex: any) => n + (ex.completedSets || []).filter((s: any) => s.completed).length, 0) }));
+  const schoolWorkload = schoolLogs.filter((l: any) => (l.weightliftingDate || l.practiceDate || l.date) >= recentStart).map((l: any) => ({ date: l.weightliftingDate || l.practiceDate || l.date, weightlifting: l.hadWeightliftingClass, practice: l.hadPractice, liftIntensity: l.weightClassIntensity, practiceIntensity: l.practiceIntensity, duration: l.practiceDurationMinutes, soreAreas: l.bodyPartsSoreOrWorked || [], notes: l.notes || '' }));
+  return JSON.stringify({ athlete: user, targetDate, dayOfWeek, readiness, recent14DayWorkload: workload, recentSchoolAndSportLoad: schoolWorkload, upcoming14DayEvents: upcomingEvents, currentWeekSchedule: weekEvents, exercisePerformance: body.exercisePerformanceMap || {}, customFocus: body.customFocus || '' });
 }
 
 function safeFallbackWorkout(body: any) {
@@ -196,7 +198,7 @@ app.post('/api/cloud-sync/delete', async (req, res) => {
 app.post('/api/generate-workout', async (req, res) => {
   const body = req.body || {};
   try {
-    const prompt = `You are Lifted, a careful high-quality strength and conditioning coach. Create one personalized workout as JSON. Use the athlete's height, body weight, completed sets, exact weights, reps, difficulty feedback, exercise notes, pain flags, readiness check-ins, soreness, yesterday's workload, school weightlifting history, practices, games, scrimmages, tournaments, future scheduled events, goals, equipment, and sport. For EVERY exercise, recommend one exact starting weight in the athlete's unit when there is enough reliable history. Calibrate it from the athlete's demonstrated load and reps, difficulty feedback, and current readiness; use body size only as a secondary sanity check, never as a reason to force a load. If reliable history is missing, choose a conservative technique-first starting load and clearly explain that it is a starting estimate. Do not invent past performance. Prefer small, conservative progressions after easy/just-right work and hold or reduce load after hard/too-hard work, high soreness, hard practice, or upcoming games. Never use pain as a reason to increase load. If practice or a game is today or soon, preserve freshness. Avoid movements that aggravate reported pain and provide a pain-free alternative; do not diagnose injuries. Include realistic rest and age-appropriate technique/recovery. Return ONLY valid JSON with {workoutTitle,goal,estimatedMinutes,readinessStatus,reasoning,injuryProtectionNotes,equipmentNeeded,exercises:[{name,sets,reps,recommendedWeight,weightUnit,restSeconds,tempo,targetMuscles,notes,whyWeightHypertrophyInjury,alternative,aiSummary:{whatItIs,howToDoIt,whatItExercises:{primary,secondary,movementPattern},whyThisWeight:{weightRationale,hypertrophyMechanism,injuryPreventionFocus,progressionContext}}}]}. Context: ${athleteContext(body)}`;
+    const prompt = `You are Lifted, a careful high-quality strength and conditioning coach. Create one personalized workout as JSON. First identify the target weekday and inspect the full recent workload plus the next 7-14 days. Use the athlete's height, body weight, completed sets, exact weights, reps, difficulty feedback, exercise notes, pain flags, readiness check-ins, soreness, yesterday's workload, school weightlifting history, practices, games, scrimmages, tournaments, future scheduled events, goals, equipment, and sport. For EVERY exercise, recommend one exact starting weight in the athlete's unit when there is enough reliable history. Calibrate it from the athlete's demonstrated load and reps, difficulty feedback, and current readiness; use body size only as a secondary sanity check, never as a reason to force a load. If reliable history is missing, choose a conservative technique-first starting load and clearly explain that it is a starting estimate. Do not invent past performance. Prefer small, conservative progressions after easy/just-right work and hold or reduce load after hard/too-hard work, high soreness, hard practice, or upcoming games. Never use pain as a reason to increase load. If practice or a game is today or soon, preserve freshness. If a Sunday weekly plan shows a demanding week ahead, use a shorter/lighter strength session or recovery day as appropriate; if a Friday is followed by a rest weekend and recent workload is reasonable, a normal stronger training stimulus may be appropriate, but never prescribe maximal testing or excessive volume. Always consider several hard days in a row before increasing training stress. Avoid movements that aggravate reported pain and provide a pain-free alternative; do not diagnose injuries. Include realistic rest and age-appropriate technique/recovery. Return ONLY valid JSON with {workoutTitle,goal,estimatedMinutes,readinessStatus,reasoning,injuryProtectionNotes,equipmentNeeded,exercises:[{name,sets,reps,recommendedWeight,weightUnit,restSeconds,tempo,targetMuscles,notes,whyWeightHypertrophyInjury,alternative,aiSummary:{whatItIs,howToDoIt,whatItExercises:{primary,secondary,movementPattern},whyThisWeight:{weightRationale,hypertrophyMechanism,injuryPreventionFocus,progressionContext}}}]}. Context: ${athleteContext(body)}`;
     const plan = await askAI(prompt, 'low');
     const result = { id: `ai-plan-${Date.now()}`, date: body.targetDate || today(), status: 'planned', practiceLaterToday: Boolean(body.readiness?.practiceLaterToday || body.schoolLog?.hadPractice), isAiGenerated: true, ...plan,
       exercises: (plan.exercises || []).map((x: any, i: number) => ({ id: `ai-ex-${Date.now()}-${i}`, exerciseId: x.exerciseId || `ai-${i}`, weightUnit: body.user?.weightUnit || 'lb', completed: false, ...x })) };
