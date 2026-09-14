@@ -1,0 +1,39 @@
+name: Final Coach and delete confirmation repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/final-coach-confirm-repair.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply repair and build
+        run: |
+          node scripts/final-coach-confirm-repair.mjs
+          npm install
+          npm run lint
+          npm run build
+      - name: Commit repaired app and remove one-shot repair
+        run: |
+          rm -f scripts/final-coach-confirm-repair.mjs .github/workflows/final-coach-confirm-repair.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/App.tsx src/components/AICoachScreen.tsx scripts .github/workflows
+          git commit -m 'Fix Coach AI payload and confirm destructive actions'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
