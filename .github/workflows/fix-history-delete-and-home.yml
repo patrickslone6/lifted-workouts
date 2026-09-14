@@ -15,6 +15,7 @@ jobs:
         with: { node-version: 20 }
       - name: Apply patch and build
         run: |
+          sed -i 's/nonce(/once(/g' scripts/fix-history-delete-and-home.mjs
           node scripts/fix-history-delete-and-home.mjs
           npm install
           npm run build
