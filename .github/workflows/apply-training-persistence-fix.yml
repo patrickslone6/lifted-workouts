@@ -20,7 +20,9 @@ jobs:
         with:
           node-version: 20
       - name: Apply patch
-        run: node scripts/fix-training-persistence.mjs
+        run: |
+          sed -i 's/nonce(/once(/g' scripts/fix-training-persistence.mjs
+          node scripts/fix-training-persistence.mjs
       - name: Build and verify
         run: |
           npm ci
