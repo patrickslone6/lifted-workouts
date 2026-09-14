@@ -4,7 +4,6 @@ const read = (f) => fs.readFileSync(f, 'utf8');
 const write = (f, s) => fs.writeFileSync(f, s, 'utf8');
 const fail = (m) => { throw new Error(m); };
 
-// Storage: activity deletion is a real persisted operation, not just a UI filter.
 {
   const f = 'src/services/storage.ts';
   let s = read(f);
@@ -16,7 +15,6 @@ const fail = (m) => { throw new Error(m); };
   write(f, s);
 }
 
-// History: every activity row gets a real delete action and App receives the event.
 {
   const f = 'src/components/HistoryScreen.tsx';
   let s = read(f);
@@ -29,13 +27,12 @@ const fail = (m) => { throw new Error(m); };
     const a = s.indexOf(marker);
     const b = s.indexOf(nextMarker, a);
     if (a < 0 || b < 0) fail(`Could not locate completed activity renderer in ${f}`);
-    const block = `          {completedActivities.map((a) => { const title = a.type === 'mobility' ? 'Morning Mobility' : a.type === 'plyometrics' ? 'Plyometrics' : 'Nightly Stretching'; return <div key={\`${a.type}-${a.date}\`} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-lg flex items-center gap-3"><div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"><CheckCircle className="w-5 h-5" /></div><div className="flex-1"><div className="text-xs font-bold text-emerald-400 uppercase tracking-wider">{new Date(a.date).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'})}</div><div className="text-lg font-bold text-white">{title}</div><div className="text-xs text-zinc-400">Completed and saved to training history</div></div><button type="button" onClick={(e) => handleDeleteActivity(a.type, a.date, e)} className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-950/30 rounded-xl transition" title="Delete history entry" aria-label={\`Delete ${title}\`}><Trash2 className="w-4 h-4" /></button></div>; })}\n`;
+    const block = `          {completedActivities.map((a) => { const title = a.type === 'mobility' ? 'Morning Mobility' : a.type === 'plyometrics' ? 'Plyometrics' : 'Nightly Stretching'; return <div key={a.type + '-' + a.date} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-lg flex items-center gap-3"><div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"><CheckCircle className="w-5 h-5" /></div><div className="flex-1"><div className="text-xs font-bold text-emerald-400 uppercase tracking-wider">{new Date(a.date).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'})}</div><div className="text-lg font-bold text-white">{title}</div><div className="text-xs text-zinc-400">Completed and saved to training history</div></div><button type="button" onClick={(e) => handleDeleteActivity(a.type, a.date, e)} className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-950/30 rounded-xl transition" title="Delete history entry" aria-label={title}><Trash2 className="w-4 h-4" /></button></div>; })}\n`;
     s = s.slice(0, a) + block + s.slice(b);
   }
   write(f, s);
 }
 
-// App: delete activity from local storage, rebuild stats, and immediately sync the reduced log.
 {
   const f = 'src/App.tsx';
   let s = read(f);
@@ -52,7 +49,6 @@ const fail = (m) => { throw new Error(m); };
   write(f, s);
 }
 
-// Coach AI: retry once with a compact context. The client receives an actual error only after both attempts fail.
 {
   const f = 'server.ts';
   let s = read(f);
