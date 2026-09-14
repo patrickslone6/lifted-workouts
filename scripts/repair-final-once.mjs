@@ -61,3 +61,4 @@ const fail = (m) => { throw new Error(m); };
 }
 
 console.log('Final Lifted repair applied successfully.');
+// Trigger commit for one-shot workflow after workflow file exists on main.
