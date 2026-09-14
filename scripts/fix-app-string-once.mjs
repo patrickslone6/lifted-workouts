@@ -7,3 +7,4 @@ if (!s.includes(bad)) throw new Error('Expected malformed apostrophe escape was 
 s = s.replace(bad, good);
 fs.writeFileSync(file, s, 'utf8');
 console.log('Fixed App.tsx apostrophe escape.');
+// Trigger commit after the one-shot workflow exists on main.
