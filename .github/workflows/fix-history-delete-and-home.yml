@@ -25,5 +25,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           rm -f scripts/fix-history-delete-and-home.mjs .github/workflows/fix-history-delete-and-home.yml
           git add -A
+          git diff --cached --quiet && exit 0
           git commit -m "Keep home completion state and delete training logs"
+          git fetch origin main
+          git rebase origin/main
           git push origin main
