@@ -64,6 +64,9 @@ export const ActiveWorkoutModal: React.FC<Props> = ({ workout, user, workoutHist
     else setWorkoutFinished(true);
   };
 
+  const persistNow = (nextExercises = exercises) => onSaveInProgress?.({ ...workout, status: 'in_progress', exercises: nextExercises });
+  const handleNextExercise = (delta: number) => { persistNow(); setCurrentIdx((p) => Math.max(0, Math.min(exercises.length - 1, p + delta))); setTimerRunning(false); };
+
   const handlePauseAndResumeLater = () => {
     onSaveInProgress?.({ ...workout, status: 'in_progress', exercises });
     setShowExitDialog(false); onClose();
@@ -76,6 +79,7 @@ export const ActiveWorkoutModal: React.FC<Props> = ({ workout, user, workoutHist
       return acc + (ex.actualWeightUsed ?? ex.recommendedWeight) * ex.reps * (doneSets || ex.sets);
     }, 0);
     const completed: WorkoutPlan = { ...workout, status: 'completed', exercises, completedAt: new Date().toISOString(), actualMinutes: workout.estimatedMinutes, userNotes: userNotes || `Completed ${exercises.length} exercises. Total volume: ${totalActualVolume} ${user.weightUnit}.` };
+    onSaveInProgress?.(completed);
     onFinishWorkout(completed);
   };
 
@@ -107,7 +111,7 @@ export const ActiveWorkoutModal: React.FC<Props> = ({ workout, user, workoutHist
         <div className="flex-1 overflow-y-auto p-5 max-w-2xl mx-auto w-full space-y-5"><div className="text-center py-6"><CheckCircle className="w-12 h-12 text-emerald-400 mx-auto" /><h2 className="text-2xl font-black text-white mt-3">Workout Ready to Save</h2><p className="text-sm text-zinc-400 mt-1">Your sets, weights, feedback, and notes will be stored in training history.</p></div><textarea value={userNotes} onChange={(e) => setUserNotes(e.target.value)} placeholder="Optional note for the AI Coach" className="w-full h-24 p-3 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-zinc-200 resize-none" /><button onClick={handleComplete} className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-base flex items-center justify-center gap-2">Save to Training History <ArrowRight className="w-4 h-4" /></button></div>
       )}
 
-      {!workoutFinished && <div className="px-4 py-3 border-t border-zinc-800 bg-zinc-900/80 flex items-center justify-between"><button onClick={() => setCurrentIdx((p) => Math.max(0, p - 1))} disabled={currentIdx === 0} className="px-4 py-2 rounded-xl bg-zinc-800 disabled:opacity-40 text-xs font-semibold"><ChevronLeft className="w-4 h-4 inline" /> Previous</button>{currentIdx < exercises.length - 1 ? <button onClick={() => setCurrentIdx((p) => p + 1)} className="px-5 py-2.5 rounded-xl bg-emerald-600 text-xs font-bold">Next Exercise <ChevronRight className="w-4 h-4 inline" /></button> : <button onClick={() => setWorkoutFinished(true)} className="px-5 py-2.5 rounded-xl bg-emerald-600 text-xs font-bold">Finish Workout <CheckCircle className="w-4 h-4 inline" /></button>}</div>}
+      {!workoutFinished && <div className="px-4 py-3 border-t border-zinc-800 bg-zinc-900/80 flex items-center justify-between"><button onClick={() => handleNextExercise(-1)} disabled={currentIdx === 0} className="px-4 py-2 rounded-xl bg-zinc-800 disabled:opacity-40 text-xs font-semibold"><ChevronLeft className="w-4 h-4 inline" /> Previous</button>{currentIdx < exercises.length - 1 ? <button onClick={() => handleNextExercise(1)} className="px-5 py-2.5 rounded-xl bg-emerald-600 text-xs font-bold">Next Exercise <ChevronRight className="w-4 h-4 inline" /></button> : <button onClick={() => setWorkoutFinished(true)} className="px-5 py-2.5 rounded-xl bg-emerald-600 text-xs font-bold">Finish Workout <CheckCircle className="w-4 h-4 inline" /></button>}</div>}
 
       {showExitDialog && <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"><div className="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-2xl space-y-4"><div><h3 className="text-lg font-bold text-white">Leave this workout?</h3><p className="text-xs text-zinc-400 mt-1">Your completed sets are saved. You can resume later.</p></div><button onClick={handlePauseAndResumeLater} className="w-full py-3 rounded-xl bg-emerald-500 text-black font-bold text-sm flex items-center justify-center gap-2"><Save className="w-4 h-4" /> Save &amp; Resume Later</button><button onClick={() => setShowExitDialog(false)} className="w-full py-3 rounded-xl bg-zinc-800 text-white font-semibold text-sm">Keep Working Out</button>{onDeleteWorkout && <button onClick={handleDeleteThisWorkout} className="w-full py-3 rounded-xl bg-rose-500/10 text-rose-300 font-semibold text-sm flex items-center justify-center gap-2"><Trash2 className="w-4 h-4" /> Delete Workout &amp; Progress</button>}</div></div>}
       {showExplanation && <ExerciseExplanationModal exercise={currentEx} user={user} hasPracticeLater={workout.practiceLaterToday} onClose={() => setShowExplanation(false)} />}

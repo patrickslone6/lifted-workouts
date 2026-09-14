@@ -114,7 +114,8 @@ export function App() {
       history: customState.history || workoutHistory, todayPlan: customState.todayPlan || todayWorkout,
       additionalWorkout: customState.additionalWorkout !== undefined ? customState.additionalWorkout : additionalWorkout,
       weeklyPlanWeekKey: customState.weeklyPlanWeekKey !== undefined ? customState.weeklyPlanWeekKey : (localStorage.getItem(weeklyPlannerKey()) === '1' ? weekStartKey() : undefined),
-      schoolLogs: storageService.getSchoolWorkoutLogs(), chatMessages: customState.chatMessages || chatMessages
+      schoolLogs: storageService.getSchoolWorkoutLogs(), chatMessages: customState.chatMessages || chatMessages,
+      activityLog: customState.activityLog || storageService.getActivityLog(), mobility: customState.mobility || mobility, nightlyRoutine: customState.nightlyRoutine || nightlyRoutine, plyometricsRoutine: customState.plyometricsRoutine || plyometricsRoutine
     });
   }, [currentAccount, user, readiness, scheduledEvents, workoutHistory, todayWorkout, additionalWorkout, chatMessages]);
 
@@ -126,7 +127,7 @@ export function App() {
     try {
       const res = await apiFetch('/api/generate-workout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
         user: targetUser, readiness: targetReadiness, scheduledEvents: targetEvents, exercisePerformanceMap: perfMap,
-        recentHistory: workoutHistory.slice(0, 30), recentSchoolLogs: storageService.getRecentSchoolLogs(30), customFocus: focusPrompt, schoolLog: schoolLogData, targetDate: todayKey()
+        recentHistory: workoutHistory.slice(0, 30), recentSchoolLogs: storageService.getRecentSchoolLogs(30), activityLog: storageService.getActivityLog(), trainingSnapshot: storageService.getTrainingSnapshot(), customFocus: focusPrompt, schoolLog: schoolLogData, targetDate: todayKey()
       }) });
       if (!res.ok) throw new Error(`API ${res.status}`);
       const data = await res.json();
@@ -236,6 +237,10 @@ export function App() {
       if (cloudData.todayPlan?.exercises?.length && cloudData.todayPlan.date === todayKey()) { localStorage.setItem(generationGateKey(), '1'); setTodayWorkout(cloudData.todayPlan); storageService.saveCurrentWorkoutPlan(cloudData.todayPlan); }
       if (cloudData.additionalWorkout !== undefined) { setAdditionalWorkout(cloudData.additionalWorkout || null); if (cloudData.additionalWorkout) storageService.saveAdditionalWorkout(cloudData.additionalWorkout); }
       if (cloudData.chatMessages) { setChatMessages(cloudData.chatMessages); storageService.saveChatMessages(cloudData.chatMessages); }
+      if (cloudData.activityLog) localStorage.setItem('lifted_activity_completion_v1', JSON.stringify(cloudData.activityLog));
+      if (cloudData.mobility) { setMobility(cloudData.mobility); storageService.saveMorningMobility(cloudData.mobility); }
+      if (cloudData.nightlyRoutine) { setNightlyRoutine(cloudData.nightlyRoutine); storageService.saveNightlyRoutine(cloudData.nightlyRoutine); }
+      if (cloudData.plyometricsRoutine) { setPlyometricsRoutine(cloudData.plyometricsRoutine); storageService.savePlyometricsRoutine(cloudData.plyometricsRoutine); }
       refreshStats();
     } else syncToCloud(account);
   };
@@ -259,15 +264,15 @@ export function App() {
       <main className="flex-1 max-w-5xl w-full mx-auto p-3 sm:p-6">
         {activeTab === 'today' && <TodayScreen user={user} readiness={readiness} todayWorkout={todayWorkout} mobility={mobility} nightlyRoutine={nightlyRoutine} plyometricsRoutine={plyometricsRoutine} schoolLog={schoolLog} dailyStreak={dailyStreak} volumeTracking={volumeTracking} scheduledEvents={scheduledEvents} workoutHistory={workoutHistory} isAiGenerating={isAiGenerating} isRegeneratingMorning={isRegeneratingMorning} isRegeneratingNightly={isRegeneratingNightly} onRegenerateWorkout={() => { localStorage.removeItem(generationGateKey()); setTodayWorkout(readyPlan()); setPendingStart(false); setShowCheckInModal(true); }} onGenerateWorkout={() => { if (todayWorkout.needsGeneration || !todayWorkout.exercises?.length) { setPendingStart(false); setShowCheckInModal(true); } }} onRegenerateMorning={async () => { await generateMorningRoutineWithAI(); }} onRegenerateNightly={async () => { await generateNightlyRoutineWithAI(); }} onStartWorkout={handleStartTodayWorkout} onStartAdditionalWorkout={handleStartAdditionalWorkout} onDeleteAdditionalWorkout={() => { if (!additionalWorkout) return; storageService.deleteAdditionalWorkout(); setAdditionalWorkout(null); }} onDeleteTodayWorkout={() => { setTodayWorkout(readyPlan()); localStorage.removeItem('ai_coach_today_workout_v1'); localStorage.removeItem(generationGateKey()); }} onStartMobility={async () => { const routine = await generateMorningRoutineWithAI(); if (routine) setIsDoingMobility(true); }} onStartNightly={async () => { const routine = await generateNightlyRoutineWithAI(); if (routine) setIsDoingNightly(true); }} onStartPlyometrics={async () => { const routine = await generatePlyometricsWithAI(); if (routine) setIsDoingPlyometrics(true); }} onOpenSchoolLog={() => setShowSchoolLogModal(true)} onOpenCheckIn={() => setShowCheckInModal(true)} onSwapExercise={handleSwapExercise} onQuickAdjustTime={handleQuickAdjustTime} onOpenCustomWorkout={() => setShowCustomWorkoutModal(true)} />}
         {activeTab === 'calendar' && <CalendarScreen user={user} scheduledEvents={scheduledEvents} workoutHistory={workoutHistory} onAddEvent={handleAddEvent} onRemoveEvent={handleRemoveEvent} todayWorkout={todayWorkout} />}
-        {activeTab === 'history' && <HistoryScreen workoutHistory={workoutHistory} onDeleteWorkout={handleDeleteWorkout} />}
+        {activeTab === 'history' && <HistoryScreen workoutHistory={workoutHistory} activityLog={storageService.getActivityLog()} onDeleteWorkout={handleDeleteWorkout} />}
         {activeTab === 'progress' && <ProgressScreen user={user} history={workoutHistory} dailyStreak={dailyStreak} volumeTracking={volumeTracking} schoolLogs={storageService.getSchoolWorkoutLogs()} />}
         {activeTab === 'coach' && <AICoachScreen user={user} readiness={readiness} currentPlan={todayWorkout} workoutHistory={workoutHistory} scheduledEvents={scheduledEvents} schoolLogs={storageService.getSchoolWorkoutLogs()} chatMessages={chatMessages} onSaveMessages={handleSaveMessages} />}
       </main>
 
       {isWorkingOut && <ActiveWorkoutModal workout={activeWorkoutTarget === 'today' ? todayWorkout : (additionalWorkout || todayWorkout)} user={user} workoutHistory={workoutHistory} onFinishWorkout={handleFinishWorkout} onSaveInProgress={handleSaveInProgressWorkout} onDeleteWorkout={handleDeleteCurrentWorkout} onClose={() => setIsWorkingOut(false)} />}
-      {isDoingMobility && <MobilityModal mobility={mobility} onComplete={() => { const next = { ...mobility, completed: true }; setMobility(next); storageService.saveMorningMobility(next); storageService.recordActivity('mobility', next.date, 1); setIsDoingMobility(false); refreshStats(); }} onClose={() => setIsDoingMobility(false)} />}
-      {isDoingNightly && <NightlyRoutineModal routine={nightlyRoutine} onComplete={() => { const next = { ...nightlyRoutine, completed: true }; setNightlyRoutine(next); storageService.saveNightlyRoutine(next); storageService.recordActivity('nightly', next.date, 1); setIsDoingNightly(false); refreshStats(); }} onClose={() => setIsDoingNightly(false)} />}
-      {isDoingPlyometrics && <PlyometricsModal routine={plyometricsRoutine} onComplete={() => { const next = { ...plyometricsRoutine, completed: true }; setPlyometricsRoutine(next); storageService.savePlyometricsRoutine(next); setIsDoingPlyometrics(false); refreshStats(); }} onClose={() => setIsDoingPlyometrics(false)} />}
+      {isDoingMobility && <MobilityModal mobility={mobility} onComplete={() => { const next = { ...mobility, completed: true, completedAt: new Date().toISOString() }; setMobility(next); storageService.saveMorningMobility(next); storageService.recordActivity('mobility', next.date, 1); setIsDoingMobility(false); refreshStats(); syncToCloud(currentAccount, { mobility: next, activityLog: storageService.getActivityLog() }); }} onClose={() => setIsDoingMobility(false)} />}
+      {isDoingNightly && <NightlyRoutineModal routine={nightlyRoutine} onComplete={() => { const next = { ...nightlyRoutine, completed: true, completedAt: new Date().toISOString() }; setNightlyRoutine(next); storageService.saveNightlyRoutine(next); storageService.recordActivity('nightly', next.date, 1); setIsDoingNightly(false); refreshStats(); syncToCloud(currentAccount, { nightlyRoutine: next, activityLog: storageService.getActivityLog() }); }} onClose={() => setIsDoingNightly(false)} />}
+      {isDoingPlyometrics && <PlyometricsModal routine={plyometricsRoutine} onComplete={() => { const next = { ...plyometricsRoutine, completed: true, completedAt: new Date().toISOString() }; setPlyometricsRoutine(next); storageService.savePlyometricsRoutine(next); storageService.recordActivity('plyometrics', next.date, 1); setIsDoingPlyometrics(false); refreshStats(); syncToCloud(currentAccount, { plyometricsRoutine: next, activityLog: storageService.getActivityLog() }); }} onClose={() => setIsDoingPlyometrics(false)} />}
       {showSchoolLogModal && <LogSchoolWorkoutModal existingLog={schoolLog} onSave={handleSaveSchoolLog} onClose={() => setShowSchoolLogModal(false)} />}
       {showWeeklyPlanner && <WeeklyPlanningModal initialEvents={scheduledEvents} weekStart={weekStartKey()} onSave={handleWeeklyPlanSave} />}
       {showCheckInModal && <DailyCheckInModal user={user} initialReadiness={readiness} onSave={handleSaveCheckIn} onClose={() => { setPendingStart(false); setShowCheckInModal(false); }} />}

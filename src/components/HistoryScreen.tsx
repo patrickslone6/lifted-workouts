@@ -16,10 +16,12 @@ import {
 
 interface Props {
   workoutHistory: WorkoutPlan[];
+  activityLog?: Array<{date:string;type:'mobility'|'nightly'|'plyometrics';amount?:number}>;
   onDeleteWorkout: (id: string) => void;
 }
 
-export const HistoryScreen: React.FC<Props> = ({ workoutHistory, onDeleteWorkout }) => {
+export const HistoryScreen: React.FC<Props> = ({ workoutHistory, activityLog = [], onDeleteWorkout }) => {
+  const completedActivities = activityLog.filter((a) => a.amount !== 0);
   const [expandedId, setExpandedId] = useState<string | null>(
     workoutHistory.length > 0 ? workoutHistory[0].id : null
   );
@@ -50,7 +52,7 @@ export const HistoryScreen: React.FC<Props> = ({ workoutHistory, onDeleteWorkout
         </p>
       </div>
 
-      {workoutHistory.length === 0 ? (
+      {workoutHistory.length === 0 && completedActivities.length === 0 ? (
         <div className="p-12 text-center text-zinc-400 border border-dashed border-zinc-800 rounded-2xl bg-zinc-900/40">
           <Dumbbell className="w-8 h-8 text-zinc-500 mx-auto mb-2" />
           <h4 className="text-base font-bold text-white mb-1">No Workout History Found</h4>
@@ -60,6 +62,7 @@ export const HistoryScreen: React.FC<Props> = ({ workoutHistory, onDeleteWorkout
         </div>
       ) : (
         <div className="space-y-4">
+          {completedActivities.map((a) => { const title = a.type === 'mobility' ? 'Morning Mobility' : a.type === 'plyometrics' ? 'Plyometrics' : 'Nightly Stretching'; return <div key={`${a.type}-${a.date}`} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-lg flex items-center gap-3"><div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"><CheckCircle className="w-5 h-5" /></div><div><div className="text-xs font-bold text-emerald-400 uppercase tracking-wider">{new Date(a.date).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'})}</div><div className="text-lg font-bold text-white">{title}</div><div className="text-xs text-zinc-400">Completed and saved to training history</div></div></div>; })}
           {workoutHistory.map((workout) => {
             const isExpanded = expandedId === workout.id;
             const isConfirming = confirmDeleteId === workout.id;
