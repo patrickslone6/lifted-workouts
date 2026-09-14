@@ -1,0 +1,37 @@
+name: Apply training persistence and AI rest fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply patch
+        run: node scripts/fix-training-persistence.mjs
+      - name: Build and verify
+        run: |
+          npm ci
+          npm run build
+      - name: Commit and clean up
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f scripts/fix-training-persistence.mjs scripts/apply-persistence-rest-fix.mjs scripts/apply-ai-activity-context.mjs
+          rm -f .github/workflows/apply-training-persistence-fix.yml .github/workflows/apply-persistence-rest-fix.yml .github/workflows/repair-persistence-rest.yml .github/workflows/apply-ai-activity-context.yml
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Persist all training activity and let AI choose rest times"
+          git push origin main
