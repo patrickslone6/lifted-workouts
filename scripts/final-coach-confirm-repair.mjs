@@ -7,7 +7,6 @@ const replaceOnce = (file, pattern, replacement, label) => {
   fs.writeFileSync(file, next, 'utf8');
 };
 
-// Keep the Coach request small enough for the server/model while preserving the useful training context.
 replaceOnce(
   'src/components/AICoachScreen.tsx',
   /body: JSON\.stringify\(\{[\s\S]*?\n\s*\}\) \}\);/,
@@ -30,7 +29,6 @@ replaceOnce(
   'Coach request payload'
 );
 
-// Put a confirmation in every app-level destructive action so History, Today, and the active workout all behave consistently.
 replaceOnce(
   'src/App.tsx',
   /const handleDeleteWorkout = \(id: string\) => \{[^\n]*\};/,
@@ -46,7 +44,7 @@ replaceOnce(
 replaceOnce(
   'src/App.tsx',
   /const handleDeleteCurrentWorkout = \(\) => \{[^\n]*\};/,
-  `const handleDeleteCurrentWorkout = () => { if (!window.confirm('Delete this workout? This cannot be undone.')) return; handleDeleteWorkout(activeWorkoutTarget === 'today' ? todayWorkout.id : additionalWorkout?.id || ''); localStorage.removeItem(generationGateKey()); setTodayWorkout(readyPlan()); setIsWorkingOut(false); };`,
+  `const handleDeleteCurrentWorkout = () => { handleDeleteWorkout(activeWorkoutTarget === 'today' ? todayWorkout.id : additionalWorkout?.id || ''); localStorage.removeItem(generationGateKey()); setTodayWorkout(readyPlan()); setIsWorkingOut(false); };`,
   'active workout deletion confirmation'
 );
 replaceOnce(
