@@ -43,12 +43,6 @@ replaceOnce(
 );
 replaceOnce(
   'src/App.tsx',
-  /const handleDeleteCurrentWorkout = \(\) => \{[^\n]*\};/,
-  `const handleDeleteCurrentWorkout = () => { handleDeleteWorkout(activeWorkoutTarget === 'today' ? todayWorkout.id : additionalWorkout?.id || ''); localStorage.removeItem(generationGateKey()); setTodayWorkout(readyPlan()); setIsWorkingOut(false); };`,
-  'active workout deletion confirmation'
-);
-replaceOnce(
-  'src/App.tsx',
   /onDeleteAdditionalWorkout=\{\(\) => \{ if \(!additionalWorkout\) return; storageService\.deleteAdditionalWorkout\(\); setAdditionalWorkout\(null\); \}\}/,
   `onDeleteAdditionalWorkout={() => { if (!additionalWorkout) return; if (!window.confirm('Delete this additional workout? This cannot be undone.')) return; storageService.deleteAdditionalWorkout(); setAdditionalWorkout(null); syncToCloud(currentAccount, { additionalWorkout: null }); }}`,
   'additional workout deletion confirmation'
