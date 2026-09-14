@@ -63,9 +63,9 @@ export function App() {
   const [todayWorkout, setTodayWorkout] = useState<WorkoutPlan>(() => getSavedTodayPlan() || readyPlan());
   const [additionalWorkout, setAdditionalWorkout] = useState<WorkoutPlan | null>(() => storageService.getAdditionalWorkout());
   const [activeWorkoutTarget, setActiveWorkoutTarget] = useState<'today' | 'additional'>('today');
-  const [plyometricsRoutine, setPlyometricsRoutine] = useState<PlyometricsRoutine>(() => emptyPlyos());
-  const [mobility, setMobility] = useState<MorningMobilityRoutine>(() => emptyMobility());
-  const [nightlyRoutine, setNightlyRoutine] = useState<NightlyStretchingRoutine>(() => emptyNightly());
+  const [plyometricsRoutine, setPlyometricsRoutine] = useState<PlyometricsRoutine>(() => storageService.getPlyometricsRoutine());
+  const [mobility, setMobility] = useState<MorningMobilityRoutine>(() => storageService.getMorningMobility());
+  const [nightlyRoutine, setNightlyRoutine] = useState<NightlyStretchingRoutine>(() => storageService.getNightlyRoutine());
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => storageService.getChatMessages());
   const [activeTab, setActiveTab] = useState<NavTab>('today');
   const [isWorkingOut, setIsWorkingOut] = useState(false);
@@ -250,6 +250,28 @@ export function App() {
   useEffect(() => {
     if (new Date().getDay() === 0 && localStorage.getItem(weeklyPlannerKey()) !== '1') setShowWeeklyPlanner(true);
   }, []);
+
+  useEffect(() => {
+    if (!currentAccount?.identifier) return;
+    let cancelled = false;
+    (async () => {
+      const cloudData = await storageService.loadAllFromCloud(currentAccount.identifier);
+      if (!cloudData || cancelled) return;
+      if (cloudData.profile) { setUser(cloudData.profile); storageService.saveUserProfile(cloudData.profile); }
+      if (cloudData.readiness) { setReadiness(cloudData.readiness); storageService.saveDailyReadiness(cloudData.readiness); }
+      if (Array.isArray(cloudData.events)) { setScheduledEvents(cloudData.events); storageService.saveScheduledEvents(cloudData.events); }
+      if (Array.isArray(cloudData.history)) { const local = storageService.getWorkoutHistory(); const byId = new Map(local.map(w => [w.id,w])); cloudData.history.forEach((w:any) => byId.set(w.id,w)); const merged = [...byId.values()].filter((w:any) => w.id !== 'hist-1').sort((a:any,b:any) => String(b.date).localeCompare(String(a.date))); setWorkoutHistory(merged); storageService.saveWorkoutHistory(merged); storageService.rebuildExercisePerformanceMap(merged); }
+      if (cloudData.todayPlan?.exercises?.length && cloudData.todayPlan.date === todayKey()) { localStorage.setItem(generationGateKey(), '1'); setTodayWorkout(cloudData.todayPlan); storageService.saveCurrentWorkoutPlan(cloudData.todayPlan); }
+      if (cloudData.additionalWorkout !== undefined) { setAdditionalWorkout(cloudData.additionalWorkout || null); if (cloudData.additionalWorkout) storageService.saveAdditionalWorkout(cloudData.additionalWorkout); else storageService.deleteAdditionalWorkout(); }
+      if (Array.isArray(cloudData.chatMessages)) { setChatMessages(cloudData.chatMessages); storageService.saveChatMessages(cloudData.chatMessages); }
+      if (Array.isArray(cloudData.activityLog)) { const local = storageService.getActivityLog(); const byKey = new Map(local.map((a:any) => [a.type+'|'+a.date,a])); cloudData.activityLog.forEach((a:any) => byKey.set(a.type+'|'+a.date,a)); localStorage.setItem('lifted_activity_completion_v1', JSON.stringify([...byKey.values()])); }
+      if (cloudData.mobility) { const local = storageService.getMorningMobility(); const routine = local.completed ? local : cloudData.mobility; setMobility(routine); storageService.saveMorningMobility(routine); }
+      if (cloudData.nightlyRoutine) { const local = storageService.getNightlyRoutine(); const routine = local.completed ? local : cloudData.nightlyRoutine; setNightlyRoutine(routine); storageService.saveNightlyRoutine(routine); }
+      if (cloudData.plyometricsRoutine) { const local = storageService.getPlyometricsRoutine(); const routine = local.completed ? local : cloudData.plyometricsRoutine; setPlyometricsRoutine(routine); storageService.savePlyometricsRoutine(routine); }
+      refreshStats();
+    })();
+    return () => { cancelled = true; };
+  }, [currentAccount?.identifier]);
 
   useEffect(() => {
     const refreshFromDataChange = () => { setWorkoutHistory(storageService.getWorkoutHistory()); setScheduledEvents(storageService.getScheduledEvents()); setChatMessages(storageService.getChatMessages()); setSchoolLog(storageService.getTodaySchoolWorkoutLog()); setTodayWorkout(getSavedTodayPlan() || readyPlan()); refreshStats(); };
