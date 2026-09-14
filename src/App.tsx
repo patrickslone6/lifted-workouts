@@ -1,3 +1,4 @@
+// Final persistence and Coach AI repair is part of the main app code.
 import React, { useState, useEffect, useCallback } from 'react';
 import { UserProfile, DailyReadiness, WorkoutPlan, MorningMobilityRoutine, NightlyStretchingRoutine, ScheduledEvent, ChatMessage, UserAccount, PlyometricsRoutine, SchoolWorkoutLog } from './types';
 import { storageService } from './services/storage';
@@ -47,7 +48,7 @@ const readyPlan = (date = todayKey()): WorkoutPlan => ({
   status: 'planned', isAiGenerated: true, needsGeneration: true, equipmentNeeded: [], exercises: []
 } as WorkoutPlan);
 
-const emptyMobility = (): MorningMobilityRoutine => ({ id: `mobility-ready-${todayKey()}`, date: todayKey(), completed: false, isAiGenerated: true, title: 'Morning mobility', durationMinutes: 10, rationale: 'Complete the check-in before starting so Lifted can account for soreness and yesterday\'s workload.', exercises: [] } as MorningMobilityRoutine);
+const emptyMobility = (): MorningMobilityRoutine => ({ id: `mobility-ready-${todayKey()}`, date: todayKey(), completed: false, isAiGenerated: true, title: 'Morning mobility', durationMinutes: 10, rationale: 'Complete the check-in before starting so Lifted can account for soreness and yesterday\\'s workload.', exercises: [] } as MorningMobilityRoutine);
 const emptyNightly = (): NightlyStretchingRoutine => ({ id: `nightly-ready-${todayKey()}`, date: todayKey(), completed: false, isAiGenerated: true, title: 'Evening recovery', durationMinutes: 10, rationale: 'Lifted will personalize recovery from your actual training and feedback.', exercises: [] } as NightlyStretchingRoutine);
 const emptyPlyos = (): PlyometricsRoutine => ({ id: `plyo-ready-${todayKey()}`, date: todayKey(), completed: false, isAiGenerated: true, title: 'Athletic power', durationMinutes: 10, rationale: 'Power work is generated only when requested and will account for recent load.', exercises: [] } as PlyometricsRoutine);
 
